@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ucad_parki/utils/app_colors.dart';
-import 'package:ucad_parki/models/transporte.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class RegistrarEntrada extends StatefulWidget {
   @override
@@ -8,207 +8,136 @@ class RegistrarEntrada extends StatefulWidget {
 }
 
 class _RegistrarEntradaState extends State<RegistrarEntrada> {
+  final supabase = Supabase.instance.client;
   TextEditingController placaCtrl = TextEditingController();
-  TextEditingController nombreCtrl = TextEditingController();
-
-  String tipoUsuario = "Estudiante";
-  String tipoVehiculo = "carro";
-
+  
   bool mostrarFormulario = false;
-  Transporte? ticket;
+  bool cargando = false;
+  Map<String, dynamic>? ticketActivo;
 
-  List<Transporte> baseDatos = [];
+  // 🔍 READ: Verificar si la placa ya tiene un ticket activo en tu tabla SQL
+  void verificarPlaca() async {
+    if (placaCtrl.text.isEmpty) return;
+    
+    setState(() => cargando = true);
+    final placa = placaCtrl.text.toUpperCase();
 
-  // 🔍 VERIFICAR PLACA
-  void verificarPlaca() {
-    final existe = baseDatos.where((v) => v.placa == placaCtrl.text);
+    try {
+      final response = await supabase
+          .from('tickets')
+          .select()
+          .eq('estado_ticket', 'activo')
+          .ilike('observaciones', '%$placa%')
+          .maybeSingle();
 
-    if (existe.isNotEmpty) {
       setState(() {
-        ticket = existe.first;
-        mostrarFormulario = false;
+        cargando = false;
+        if (response != null) {
+          ticketActivo = response;
+          mostrarFormulario = false;
+        } else {
+          mostrarFormulario = true;
+          ticketActivo = null;
+        }
       });
-    } else {
-      setState(() {
-        mostrarFormulario = true;
-        ticket = null;
-      });
+    } catch (e) {
+      setState(() => cargando = false);
+      print("Error al verificar: $e");
     }
   }
 
-  // 💾 REGISTRAR VEHÍCULO
-  void registrarVehiculo() {
-    final hora = TimeOfDay.now().format(context);
+  // 📥 CREATE: Insertar registro en la tabla 'tickets'
+  void registrarEntrada() async {
+    final placa = placaCtrl.text.toUpperCase();
+    final fechaIso = DateTime.now().toIso8601String();
 
-    Transporte nuevo = Transporte(
-      placa: placaCtrl.text,
-      tipo: tipoVehiculo,
-      duenio: nombreCtrl.text,
-      tipoUsuario: tipoUsuario,
-      horaEntrada: hora,
-      horaSalida: "Pendiente",
-      activo: true,
-    );
+    try {
+      await supabase.from('tickets').insert({
+        'fecha_hora_entrada': fechaIso,
+        'estado_ticket': 'activo',
+        'metodo_ingreso': 'manual',
+        'observaciones': 'PLACA: $placa', 
+        // Nota: Los IDs de usuario/vehículo quedan nulos para no romper FKs
+      });
 
-    baseDatos.add(nuevo);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(backgroundColor: Colors.green, content: Text("Se ha registrado la entrada exitosamente")),
+      );
 
-    setState(() {
-      ticket = nuevo;
-      mostrarFormulario = false;
-    });
+      setState(() {
+        mostrarFormulario = false;
+        ticketActivo = {
+          'observaciones': 'PLACA: $placa',
+          'fecha_hora_entrada': fechaIso,
+        };
+      });
+    } catch (e) {
+      print("Error al insertar: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(backgroundColor: Colors.red, content: Text("Error al guardar: $e")),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.azul,
-      appBar: AppBar(
-        title: Text("Registrar Entrada"),
-        backgroundColor: AppColors.azul,
-      ),
+      appBar: AppBar(title: Text("Entrada UCAD"), backgroundColor: AppColors.azul),
       body: SingleChildScrollView(
         padding: EdgeInsets.all(20),
         child: Column(
           children: [
-            // 🔵 INPUT PLACA
             TextField(
               controller: placaCtrl,
+              textCapitalization: TextCapitalization.characters,
               decoration: InputDecoration(
-                hintText: "Ingresar placa",
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                hintText: "Número de Placa",
+                filled: true, fillColor: Colors.white,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
-
             SizedBox(height: 15),
-
-            // 🟡 BOTÓN VERIFICAR
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: verificarPlaca,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.amarillo,
-                  padding: EdgeInsets.symmetric(vertical: 15),
-                ),
-                child: Text(
-                  "Verificar placa",
-                  style: TextStyle(color: Colors.black),
-                ),
+                onPressed: cargando ? null : verificarPlaca,
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.amarillo),
+                child: Text(cargando ? "Buscando..." : "Verificar Placa", style: TextStyle(color: Colors.black)),
               ),
             ),
-
-            SizedBox(height: 20),
-
-            // 📄 FORMULARIO
             if (mostrarFormulario) ...[
-              Text(
-                "Vehículo no registrado",
-                style: TextStyle(color: Colors.white, fontSize: 16),
-              ),
-
+              SizedBox(height: 30),
+              Text("Vehículo no detectado. ¿Registrar ingreso?", style: TextStyle(color: Colors.white)),
               SizedBox(height: 15),
-
-              // NOMBRE
-              TextField(
-                controller: nombreCtrl,
-                decoration: InputDecoration(
-                  hintText: "Nombre completo",
-                  filled: true,
-                  fillColor: Colors.white,
-                ),
-              ),
-
-              SizedBox(height: 10),
-
-              // TIPO USUARIO
-              DropdownButtonFormField<String>(
-                value: tipoUsuario,
-                items: ["Estudiante", "Empleado", "Visitante"]
-                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                    .toList(),
-                onChanged: (value) {
-                  setState(() => tipoUsuario = value!);
-                },
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: Colors.white,
-                ),
-              ),
-
-              SizedBox(height: 10),
-
-              // TIPO VEHÍCULO
-              DropdownButtonFormField<String>(
-                value: tipoVehiculo,
-                items: ["carro", "moto", "bicicleta"]
-                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                    .toList(),
-                onChanged: (value) {
-                  setState(() => tipoVehiculo = value!);
-                },
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: Colors.white,
-                ),
-              ),
-
-              SizedBox(height: 15),
-
-              // BOTÓN GUARDAR
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: registrarVehiculo,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    padding: EdgeInsets.symmetric(vertical: 15),
-                  ),
-                  child: Text("Guardar"),
+                  onPressed: registrarEntrada,
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                  child: Text("Registrar Entrada"),
                 ),
               ),
             ],
-
-            SizedBox(height: 25),
-
-            // 🎟️ TICKET
-            if (ticket != null)
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Text(
-                        "TICKET DE REGISTRO",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                    ),
-
-                    SizedBox(height: 15),
-
-                    Text("Placa: ${ticket!.placa}"),
-                    Text("Dueño: ${ticket!.duenio}"),
-                    Text("Tipo usuario: ${ticket!.tipoUsuario}"),
-                    Text("Vehículo: ${ticket!.tipo}"),
-                    Text("Entrada: ${ticket!.horaEntrada}"),
-                    Text("Salida: ${ticket!.horaSalida}"),
-                  ],
-                ),
-              ),
+            if (ticketActivo != null) _buildTicketView(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildTicketView() {
+    return Container(
+      margin: EdgeInsets.only(top: 30),
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15)),
+      child: Column(
+        children: [
+          Text("TICKET EN CURSO", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          Divider(),
+          Text("${ticketActivo!['observaciones']}"),
+          Text("Fecha: ${ticketActivo!['fecha_hora_entrada']}"),
+        ],
       ),
     );
   }

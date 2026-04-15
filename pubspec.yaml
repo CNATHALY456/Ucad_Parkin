@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
 
-  supabase_flutter: ^2.0.0
+  supabase_flutter: ^2.12.2
 
 dev_dependencies:
   flutter_test:

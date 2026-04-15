@@ -9,38 +9,60 @@ class RegistroSalida extends StatefulWidget {
 
 class _RegistroSalidaState extends State<RegistroSalida> {
   final supabase = Supabase.instance.client;
-
   TextEditingController placaCtrl = TextEditingController();
-  Map<String, dynamic>? ticket;
-  String mensaje = "";
+  Map<String, dynamic>? ticketFinalizado;
+  bool procesando = false;
 
-  void registrarSalida() async {
-    final placa = placaCtrl.text;
+  // 📤 UPDATE: Actualizar registro existente en 'tickets'
+  void procesarSalida() async {
+    if (placaCtrl.text.isEmpty) return;
 
-    final response = await supabase
-        .from('transporte')
-        .select()
-        .eq('placa', placa)
-        .eq('activo', true)
-        .maybeSingle();
+    setState(() => procesando = true);
+    final placa = placaCtrl.text.toUpperCase();
+    final fechaSalida = DateTime.now().toIso8601String();
 
-    if (response != null) {
-      final hora = TimeOfDay.now().format(context);
+    try {
+      // 1. Buscamos el ticket que esté activo para esa placa
+      final ticketActivo = await supabase
+          .from('tickets')
+          .select()
+          .eq('estado_ticket', 'activo')
+          .ilike('observaciones', '%$placa%')
+          .maybeSingle();
 
-      await supabase
-          .from('transporte')
-          .update({"hora_salida": hora, "activo": false})
-          .eq('id', response['id']);
+      if (ticketActivo != null) {
+        // 2. Actualizamos el registro (UPDATE) usando su ID Primaria 'id_ticket'
+        await supabase
+            .from('tickets')
+            .update({
+              'fecha_hora_salida': fechaSalida,
+              'estado_ticket': 'finalizado',
+              'metodo_salida': 'manual'
+            })
+            .eq('id_ticket', ticketActivo['id_ticket']);
 
-      setState(() {
-        ticket = {...response, "hora_salida": hora};
-        mensaje = "";
-      });
-    } else {
-      setState(() {
-        mensaje = "Vehículo no encontrado o ya salió";
-        ticket = null;
-      });
+        setState(() {
+          ticketFinalizado = {
+            'placa': placa,
+            'entrada': ticketActivo['fecha_hora_entrada'],
+            'salida': fechaSalida
+          };
+          procesando = false;
+        });
+        
+        placaCtrl.clear();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(backgroundColor: Colors.blue, content: Text("Salida registrada con éxito")),
+        );
+      } else {
+        setState(() => procesando = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("No se encontró entrada activa para esta placa")),
+        );
+      }
+    } catch (e) {
+      setState(() => procesando = false);
+      print("Error en salida: $e");
     }
   }
 
@@ -48,83 +70,50 @@ class _RegistroSalidaState extends State<RegistroSalida> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.azul,
-      appBar: AppBar(
-        title: Text("Registro de Salida"),
-        backgroundColor: AppColors.azul,
-      ),
+      appBar: AppBar(title: Text("Salida UCAD"), backgroundColor: AppColors.azul),
       body: Padding(
         padding: EdgeInsets.all(20),
         child: Column(
           children: [
-            // 🔍 INPUT
             TextField(
               controller: placaCtrl,
+              textCapitalization: TextCapitalization.characters,
               decoration: InputDecoration(
-                hintText: "Ingresar placa",
-                filled: true,
-                fillColor: Colors.white,
+                hintText: "Ingrese Placa",
+                filled: true, fillColor: Colors.white,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
-
-            SizedBox(height: 15),
-
-            // 🔘 BOTÓN
+            SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: registrarSalida,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.amarillo,
-                ),
-                child: Text(
-                  "Registrar salida",
-                  style: TextStyle(color: Colors.black),
-                ),
+                onPressed: procesando ? null : procesarSalida,
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.amarillo),
+                child: Text(procesando ? "Procesando..." : "Registrar Salida", style: TextStyle(color: Colors.black)),
               ),
             ),
-
-            SizedBox(height: 20),
-
-            // ❌ ERROR
-            if (mensaje.isNotEmpty)
-              Text(mensaje, style: TextStyle(color: Colors.red, fontSize: 16)),
-
-            SizedBox(height: 20),
-
-            // 🎟️ TICKET
-            if (ticket != null)
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Text(
-                        "SALIDA REGISTRADA",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                    ),
-
-                    SizedBox(height: 15),
-
-                    Text("Placa: ${ticket!['placa']}"),
-                    Text("Dueño: ${ticket!['duenio']}"),
-                    Text("Tipo: ${ticket!['tipo_usuario']}"),
-                    Text("Entrada: ${ticket!['hora_entrada']}"),
-                    Text("Salida: ${ticket!['hora_salida']}"),
-                  ],
-                ),
-              ),
+            if (ticketFinalizado != null) _buildResumen(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildResumen() {
+    return Container(
+      margin: EdgeInsets.only(top: 30),
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15)),
+      child: Column(
+        children: [
+          Icon(Icons.check_circle, color: Colors.green, size: 50),
+          Text("RESUMEN DE SALIDA", style: TextStyle(fontWeight: FontWeight.bold)),
+          Divider(),
+          Text("Vehículo: ${ticketFinalizado!['placa']}"),
+          Text("Entrada: ${ticketFinalizado!['entrada']}"),
+          Text("Salida: ${ticketFinalizado!['salida']}"),
+        ],
       ),
     );
   }
