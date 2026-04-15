@@ -97,10 +97,10 @@ class _VigilanteHomeState extends State<VigilanteHome> {
 
                     const SizedBox(height: 30),
 
-                    // 🔘 BOTONES PRO
+                    // 🔘 BOTONES
                     BotonHome(
                       titulo: "REGISTRAR ENTRADA",
-                      subtitulo: "Automóvil, motos, bicicletas",
+                      subtitulo: "Automóvil, motocicleta, bicicletas",
                       icono: Icons.login,
                       azul: azul,
                       amarillo: amarillo,
@@ -108,7 +108,7 @@ class _VigilanteHomeState extends State<VigilanteHome> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => RegistroEntrada(),
+                            builder: (context) => RegistrarEntrada(),
                           ),
                         );
                       },

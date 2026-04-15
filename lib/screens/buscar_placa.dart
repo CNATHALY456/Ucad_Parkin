@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ucad_parki/utils/app_colors.dart';
-import 'package:ucad_parki/models/transporte.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class BuscarPlaca extends StatefulWidget {
   @override
@@ -8,39 +8,34 @@ class BuscarPlaca extends StatefulWidget {
 }
 
 class _BuscarPlacaState extends State<BuscarPlaca> {
+  final supabase = Supabase.instance.client;
+
   TextEditingController buscador = TextEditingController();
 
-  List<Transporte> lista = [
-    Transporte(
-      placa: "P123-456",
-      tipo: "carro",
-      duenio: "Juan Pérez",
-      horaEntrada: "08:30 AM",
-      horaSalida: "Pendiente",
-      activo: true,
-    ),
-    Transporte(
-      placa: "M789-222",
-      tipo: "moto",
-      duenio: "Carlos López",
-      horaEntrada: "09:10 AM",
-      horaSalida: "Pendiente",
-      activo: true,
-    ),
-  ];
-
-  List<Transporte> filtrados = [];
+  List<Map<String, dynamic>> lista = [];
+  List<Map<String, dynamic>> filtrados = [];
 
   @override
   void initState() {
     super.initState();
-    filtrados = lista;
+    cargarDatos();
   }
 
+  // 🔥 TRAER DATOS DE SUPABASE
+  void cargarDatos() async {
+    final data = await supabase.from('transporte').select();
+
+    setState(() {
+      lista = List<Map<String, dynamic>>.from(data);
+      filtrados = lista;
+    });
+  }
+
+  // 🔍 FILTRAR
   void filtrar(String texto) {
     setState(() {
       filtrados = lista
-          .where((v) => v.placa.toLowerCase().contains(texto.toLowerCase()))
+          .where((v) => v['placa'].toLowerCase().contains(texto.toLowerCase()))
           .toList();
     });
   }
@@ -60,13 +55,12 @@ class _BuscarPlacaState extends State<BuscarPlaca> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.azul,
-
       body: SafeArea(
         child: Column(
           children: [
             SizedBox(height: 10),
 
-            //  BUSCADOR
+            // 🔍 BUSCADOR
             Padding(
               padding: const EdgeInsets.all(15),
               child: TextField(
@@ -85,21 +79,14 @@ class _BuscarPlacaState extends State<BuscarPlaca> {
               ),
             ),
 
-            //  RESULTADOS
+            // 📋 LISTA
             Expanded(
               child: ListView.builder(
                 itemCount: filtrados.length,
                 itemBuilder: (context, index) {
                   final v = filtrados[index];
 
-                  return TweenAnimationBuilder(
-                    duration: Duration(milliseconds: 400),
-                    tween: Tween(begin: 0.8, end: 1.0),
-                    builder: (context, value, child) {
-                      return Transform.scale(scale: value, child: child);
-                    },
-                    child: tarjetaVehiculo(v),
-                  );
+                  return tarjetaVehiculo(v);
                 },
               ),
             ),
@@ -109,8 +96,8 @@ class _BuscarPlacaState extends State<BuscarPlaca> {
     );
   }
 
-  //  TARJETA
-  Widget tarjetaVehiculo(Transporte v) {
+  // 🚗 TARJETA
+  Widget tarjetaVehiculo(Map<String, dynamic> v) {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 15, vertical: 10),
       child: Material(
@@ -124,63 +111,74 @@ class _BuscarPlacaState extends State<BuscarPlaca> {
           ),
           child: Row(
             children: [
-              // 🚗 ICONO
-              Column(
-                children: [
-                  Icon(iconoVehiculo(v.tipo), size: 40, color: AppColors.azul),
-
-                  SizedBox(height: 10),
-
-                  //  ESTADO
-                  CircleAvatar(
-                    radius: 8,
-                    backgroundColor: v.activo ? Colors.green : Colors.red,
-                  ),
-                ],
-              ),
+              Icon(iconoVehiculo(v['tipo']), size: 40, color: AppColors.azul),
 
               SizedBox(width: 15),
 
-              //  INFO
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      v.placa,
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.azul,
+                    // 🟢 ESTADO + PLACA
+                    Row(
+                      children: [
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: v['activo'] ? Colors.green : Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          v['placa'],
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.azul,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    SizedBox(height: 6),
+
+                    // 👤 DUEÑO RESALTADO
+                    RichText(
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: "Dueño: ",
+                            style: TextStyle(color: Colors.black54),
+                          ),
+                          TextSpan(
+                            text: v['duenio'],
+                            style: TextStyle(
+                              color: AppColors.azul,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
 
                     SizedBox(height: 5),
 
-                    Text("Dueño: ${v.duenio}"),
-
-                    SizedBox(height: 5),
-
-                    Text("Entrada: ${v.horaEntrada}"),
-
-                    Text("Salida: ${v.horaSalida}"),
+                    Text("Entrada: ${v['hora_entrada']}"),
+                    Text("Salida: ${v['hora_salida']}"),
                   ],
                 ),
               ),
 
-              //  BOTÓN CONTACTO
-              GestureDetector(
-                onTap: () {
-                  print("Contactar a ${v.duenio}");
-                },
-                child: Container(
-                  padding: EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.amarillo,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(Icons.phone, color: AppColors.azul),
+              // 📞 CONTACTO
+              Container(
+                padding: EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.amarillo,
+                  borderRadius: BorderRadius.circular(10),
                 ),
+                child: Icon(Icons.phone, color: AppColors.azul),
               ),
             ],
           ),
