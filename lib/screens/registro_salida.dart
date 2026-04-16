@@ -13,7 +13,7 @@ class _RegistroSalidaState extends State<RegistroSalida> {
   Map<String, dynamic>? ticketFinalizado;
   bool procesando = false;
 
-  // 📤 UPDATE: Actualizar registro existente en 'tickets'
+  //UPDATE: Actualizar registro existente en 'tickets'
   void procesarSalida() async {
     if (placaCtrl.text.isEmpty) return;
 

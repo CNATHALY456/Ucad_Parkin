@@ -22,7 +22,7 @@ class _BuscarPlacaState extends State<BuscarPlaca> {
     cargarDatos();
   }
 
-  // 🔥 CONSULTA CON JOIN: Traemos datos del ticket y el nombre del usuario
+  //CONSULTA CON JOIN: Traemos datos del ticket y el nombre del usuario
   void cargarDatos() async {
     try {
       // Usamos 'usuarios(nombres)' para traer el nombre asociado vía la FK id_usuario
@@ -52,7 +52,7 @@ class _BuscarPlacaState extends State<BuscarPlaca> {
     });
   }
 
-  // 📞 FUNCIÓN PARA LLAMAR O CONTACTAR
+  //FUNCIÓN PARA LLAMAR O CONTACTAR
   void contactarUsuario(String? telefono) async {
     if (telefono == null || telefono.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
