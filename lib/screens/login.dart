@@ -4,6 +4,7 @@ import 'package:ucad_parki/widgets/input_ucad.dart';
 import 'package:ucad_parki/widgets/boton_ucad.dart';
 import 'package:ucad_parki/widgets/label_ucad.dart';
 import 'package:ucad_parki/utils/app_colors.dart';
+import 'package:ucad_parki/screens/registro.dart';
 
 class LoginPage extends StatelessWidget {
   @override
@@ -16,26 +17,26 @@ class LoginPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              //  LOGO
+              // 🔝 LOGO
               Center(child: Image.asset('assets/parky.png', height: 220)),
 
               SizedBox(height: 30),
 
-              //  CORREO
+              // 📧 CORREO
               LabelUcad(texto: "Correo"),
               SizedBox(height: 8),
               InputUcad(hint: "Ingresa tu correo"),
 
               SizedBox(height: 20),
 
-              //  CONTRASEÑA
+              // 🔒 CONTRASEÑA
               LabelUcad(texto: "Contraseña"),
               SizedBox(height: 8),
               InputUcad(hint: "Ingresa tu contraseña", isPassword: true),
 
               SizedBox(height: 25),
 
-              //  BOTÓN LOGIN
+              // 🔘 BOTÓN LOGIN
               BotonUcad(
                 texto: "Iniciar sesión",
                 color: AppColors.amarillo,
@@ -49,7 +50,7 @@ class LoginPage extends StatelessWidget {
 
               SizedBox(height: 15),
 
-              //  OLVIDÓ CONTRASEÑA
+              // ❓ OLVIDÓ CONTRASEÑA
               Center(
                 child: TextButton(
                   onPressed: () {},
@@ -60,7 +61,7 @@ class LoginPage extends StatelessWidget {
                 ),
               ),
 
-              //  REGISTRO
+              // 📝 REGISTRO
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -69,7 +70,12 @@ class LoginPage extends StatelessWidget {
                     style: TextStyle(color: Colors.white70, fontSize: 16),
                   ),
                   TextButton(
-                    onPressed: () {},
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => RegistroPage()),
+                      );
+                    },
                     child: Text(
                       "Regístrate",
                       style: TextStyle(
@@ -81,6 +87,52 @@ class LoginPage extends StatelessWidget {
                   ),
                 ],
               ),
+
+              SizedBox(height: 20),
+
+              // 🔽 DIVISOR
+              Row(
+                children: [
+                  Expanded(child: Divider(color: Colors.white54)),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10),
+                    child: Text(
+                      "o continuar con",
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                  Expanded(child: Divider(color: Colors.white54)),
+                ],
+              ),
+
+              SizedBox(height: 20),
+
+              // 🔵 BOTÓN GOOGLE
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    print("Login con Google");
+                  },
+                  icon: Image.asset('assets/google.png', height: 22),
+                  label: Text(
+                    "Iniciar con Google",
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+
+              SizedBox(height: 10),
             ],
           ),
         ),

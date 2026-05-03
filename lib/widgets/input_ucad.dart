@@ -3,12 +3,19 @@ import 'package:flutter/material.dart';
 class InputUcad extends StatelessWidget {
   final String hint;
   final bool isPassword;
+  final TextEditingController? controller; // 👈 agregado
 
-  const InputUcad({super.key, required this.hint, this.isPassword = false});
+  const InputUcad({
+    super.key,
+    required this.hint,
+    this.isPassword = false,
+    this.controller, // 👈 agregado
+  });
 
   @override
   Widget build(BuildContext context) {
     return TextField(
+      controller: controller, // 👈 agregado
       obscureText: isPassword,
       style: const TextStyle(fontSize: 16),
       decoration: InputDecoration(
