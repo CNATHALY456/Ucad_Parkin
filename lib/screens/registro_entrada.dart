@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:ucad_parki/utils/app_colors.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class RegistrarEntrada extends StatefulWidget {
@@ -15,129 +14,134 @@ class _RegistrarEntradaState extends State<RegistrarEntrada> {
   bool cargando = false;
   Map<String, dynamic>? ticketActivo;
 
-  // 🔍 READ: Verificar si la placa ya tiene un ticket activo en tu tabla SQL
+  // --- 1. READ: Buscar ticket activo ---
   void verificarPlaca() async {
     if (placaCtrl.text.isEmpty) return;
-    
     setState(() => cargando = true);
-    final placa = placaCtrl.text.toUpperCase();
-
+    
     try {
       final response = await supabase
           .from('tickets')
           .select()
           .eq('estado_ticket', 'activo')
-          .ilike('observaciones', '%$placa%')
+          .ilike('observaciones', '%${placaCtrl.text}%')
           .maybeSingle();
 
       setState(() {
+        ticketActivo = response;
+        mostrarFormulario = (response == null);
         cargando = false;
-        if (response != null) {
-          ticketActivo = response;
-          mostrarFormulario = false;
-        } else {
-          mostrarFormulario = true;
-          ticketActivo = null;
-        }
       });
     } catch (e) {
-      setState(() => cargando = false);
-      print("Error al verificar: $e");
+      _showSnack("Error al buscar: $e", Colors.red);
     }
   }
 
-  // 📥 CREATE: Insertar registro en la tabla 'tickets'
+  // --- 2. CREATE: Insertar nuevo ticket ---
   void registrarEntrada() async {
-    final placa = placaCtrl.text.toUpperCase();
-    final fechaIso = DateTime.now().toIso8601String();
-
     try {
-      await supabase.from('tickets').insert({
-        'fecha_hora_entrada': fechaIso,
+      final nuevaEntrada = await supabase.from('tickets').insert({
+        'fecha_hora_entrada': DateTime.now().toIso8601String(),
         'estado_ticket': 'activo',
         'metodo_ingreso': 'manual',
-        'observaciones': 'PLACA: $placa', 
-        // Nota: Los IDs de usuario/vehículo quedan nulos para no romper FKs
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(backgroundColor: Colors.green, content: Text("Se ha registrado la entrada exitosamente")),
-      );
+        'observaciones': 'PLACA: ${placaCtrl.text.toUpperCase()}',
+      }).select().single(); // Traemos el registro creado para tener el ID
 
       setState(() {
+        ticketActivo = nuevaEntrada;
         mostrarFormulario = false;
-        ticketActivo = {
-          'observaciones': 'PLACA: $placa',
-          'fecha_hora_entrada': fechaIso,
-        };
       });
+      _showSnack("Entrada registrada con éxito", Colors.green);
     } catch (e) {
-      print("Error al insertar: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(backgroundColor: Colors.red, content: Text("Error al guardar: $e")),
-      );
+      _showSnack("Error al registrar: $e", Colors.red);
     }
+  }
+
+  // --- 3. UPDATE: Registrar salida (Finalizar ticket) ---
+  void registrarSalida() async {
+    if (ticketActivo == null) return;
+
+    try {
+      await supabase.from('tickets').update({
+        'estado_ticket': 'finalizado',
+        'fecha_hora_salida': DateTime.now().toIso8601String(),
+      }).eq('id', ticketActivo!['id']); // Usamos el ID único
+
+      setState(() {
+        ticketActivo = null;
+        placaCtrl.clear();
+      });
+      _showSnack("Salida registrada. Ticket finalizado.", Colors.blue);
+    } catch (e) {
+      _showSnack("Error al actualizar: $e", Colors.red);
+    }
+  }
+
+  // --- 4. DELETE: Eliminar registro (Corrección de error) ---
+  void eliminarTicket() async {
+    if (ticketActivo == null) return;
+
+    try {
+      await supabase.from('tickets').delete().eq('id', ticketActivo!['id']);
+      
+      setState(() {
+        ticketActivo = null;
+        placaCtrl.clear();
+      });
+      _showSnack("Registro eliminado correctamente", Colors.orange);
+    } catch (e) {
+      _showSnack("Error al eliminar: $e", Colors.red);
+    }
+  }
+
+  void _showSnack(String msg, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: color));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.azul,
-      appBar: AppBar(title: Text("Entrada UCAD"), backgroundColor: AppColors.azul),
-      body: SingleChildScrollView(
+      appBar: AppBar(title: Text("CRUD UCAD Parki")),
+      body: Padding(
         padding: EdgeInsets.all(20),
         child: Column(
           children: [
-            TextField(
-              controller: placaCtrl,
-              textCapitalization: TextCapitalization.characters,
-              decoration: InputDecoration(
-                hintText: "Número de Placa",
-                filled: true, fillColor: Colors.white,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-            SizedBox(height: 15),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: cargando ? null : verificarPlaca,
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.amarillo),
-                child: Text(cargando ? "Buscando..." : "Verificar Placa", style: TextStyle(color: Colors.black)),
-              ),
-            ),
-            if (mostrarFormulario) ...[
-              SizedBox(height: 30),
-              Text("Vehículo no detectado. ¿Registrar ingreso?", style: TextStyle(color: Colors.white)),
-              SizedBox(height: 15),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: registrarEntrada,
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                  child: Text("Registrar Entrada"),
-                ),
-              ),
-            ],
-            if (ticketActivo != null) _buildTicketView(),
+            TextField(controller: placaCtrl, decoration: InputDecoration(labelText: "Placa")),
+            ElevatedButton(onPressed: verificarPlaca, child: Text("Verificar")),
+            
+            if (mostrarFormulario) 
+              ElevatedButton(onPressed: registrarEntrada, child: Text("CREAR: Registrar Entrada")),
+
+            if (ticketActivo != null) ...[
+              _buildTicketCard(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton(
+                    onPressed: registrarSalida, 
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                    child: Text("UPDATE: Salida"),
+                  ),
+                  ElevatedButton(
+                    onPressed: eliminarTicket, 
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                    child: Text("DELETE: Borrar"),
+                  ),
+                ],
+              )
+            ]
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTicketView() {
-    return Container(
-      margin: EdgeInsets.only(top: 30),
-      padding: EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15)),
-      child: Column(
-        children: [
-          Text("TICKET EN CURSO", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          Divider(),
-          Text("${ticketActivo!['observaciones']}"),
-          Text("Fecha: ${ticketActivo!['fecha_hora_entrada']}"),
-        ],
+  Widget _buildTicketCard() {
+    return Card(
+      margin: EdgeInsets.symmetric(vertical: 20),
+      child: ListTile(
+        title: Text(ticketActivo!['observaciones']),
+        subtitle: Text("Entrada: ${ticketActivo!['fecha_hora_entrada']}"),
       ),
     );
   }
