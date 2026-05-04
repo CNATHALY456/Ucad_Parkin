@@ -1,15 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ucad_parki/utils/app_colors.dart';
 import 'package:ucad_parki/widgets/input_ucad.dart';
 import 'package:ucad_parki/widgets/boton_ucad.dart';
 import 'package:ucad_parki/widgets/label_ucad.dart';
 
 class RegistroPage extends StatefulWidget {
+  const RegistroPage({super.key});
+
   @override
-  _RegistroPageState createState() => _RegistroPageState();
+  State<RegistroPage> createState() => _RegistroPageState();
 }
 
 class _RegistroPageState extends State<RegistroPage> {
+  final supabase = Supabase.instance.client;
+
+  // Controladores de texto
   final correoCtrl = TextEditingController();
   final passCtrl = TextEditingController();
   final nombreCtrl = TextEditingController();
@@ -20,6 +26,7 @@ class _RegistroPageState extends State<RegistroPage> {
   String tipoUsuario = "Estudiante";
   String? facultad;
   String? carrera;
+  bool cargando = false;
 
   final Map<String, List<String>> carrerasPorFacultad = {
     "Ciencias Económicas": [
@@ -40,161 +47,205 @@ class _RegistroPageState extends State<RegistroPage> {
     ],
   };
 
-  bool validarCorreo(String correo) {
-    return correo.endsWith("@ucad.edu.sv");
+  @override
+  void dispose() {
+    correoCtrl.dispose();
+    passCtrl.dispose();
+    nombreCtrl.dispose();
+    apellidoCtrl.dispose();
+    carnetCtrl.dispose();
+    codigoCtrl.dispose();
+    super.dispose();
   }
 
-  bool validarPassword(String pass) {
-    return pass.length >= 8;
-  }
-
-  void registrar() {
-    if (!validarCorreo(correoCtrl.text)) {
-      mostrar("Correo debe ser institucional @ucad.edu.sv");
+  Future<void> registrar() async {
+    // 1. Validaciones
+    if (nombreCtrl.text.trim().isEmpty || apellidoCtrl.text.trim().isEmpty) {
+      mostrar("Por favor, ingresa tu nombre completo");
       return;
     }
 
-    if (!validarPassword(passCtrl.text)) {
+    if (!correoCtrl.text.trim().endsWith("@ucad.edu.sv")) {
+      mostrar("El correo debe ser institucional (@ucad.edu.sv)");
+      return;
+    }
+
+    if (passCtrl.text.trim().length < 8) {
       mostrar("La contraseña debe tener al menos 8 caracteres");
       return;
     }
 
     if (tipoUsuario == "Estudiante" && (facultad == null || carrera == null)) {
-      mostrar("Selecciona facultad y carrera");
+      mostrar("Por favor selecciona facultad y carrera");
       return;
     }
 
-    if (tipoUsuario != "Estudiante" && codigoCtrl.text.isEmpty) {
-      mostrar("Debes ingresar tu código institucional");
-      return;
-    }
+    setState(() => cargando = true);
 
-    mostrar("Registro exitoso 🎉");
+    try {
+      // 2. Registro en Supabase Auth
+      final AuthResponse res = await supabase.auth.signUp(
+        email: correoCtrl.text.trim(),
+        password: passCtrl.text.trim(),
+      );
+
+      final String? userId = res.user?.id;
+
+      if (userId != null) {
+        // 3. Inserción en la tabla 'usuarios'
+        // IMPORTANTE: Asegúrate de que estas columnas existan en SQL
+        await supabase.from('usuarios').insert({
+          'id_usuario': userId, 
+          'nombres': nombreCtrl.text.trim(),
+          'apellidos': apellidoCtrl.text.trim(),
+          'correo': correoCtrl.text.trim(),
+          'tipo_usuario': tipoUsuario,
+          'facultad': facultad,
+          'carrera': carrera,
+          'identificacion': tipoUsuario == "Estudiante" 
+              ? carnetCtrl.text.trim() 
+              : codigoCtrl.text.trim(),
+          'estado': 'activo',
+          'fecha_registro': DateTime.now().toIso8601String(),
+          'url_avatar': null, // Se inicializa vacío para evitar errores de null
+        });
+
+        if (mounted) {
+          mostrar("¡Cuenta creada con éxito! Bienvenido.");
+          Navigator.pop(context);
+        }
+      }
+    } on PostgrestException catch (e) {
+      // Error específico de la base de datos (Ej: falta una columna o RLS)
+      debugPrint("Error SQL: ${e.message}");
+      mostrar("Error de base de datos: Verifica que el perfil se haya creado.");
+    } on AuthException catch (e) {
+      mostrar(e.message);
+    } catch (e) {
+      debugPrint("Error Registro: $e");
+      mostrar("Error inesperado: No se pudo completar el registro.");
+    } finally {
+      if (mounted) setState(() => cargando = false);
+    }
   }
 
   void mostrar(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: Colors.black87),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.azul,
-      appBar: AppBar(title: Text("Registro"), backgroundColor: AppColors.azul),
+      appBar: AppBar(
+        title: const Text("Crear Cuenta", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: AppColors.azul,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(25),
+        padding: const EdgeInsets.all(25),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            LabelUcad(texto: "Nombre"),
-            InputUcad(hint: "Ingresa tu nombre", controller: nombreCtrl),
+            const LabelUcad(texto: "Nombres"),
+            InputUcad(hint: "Tus nombres", controller: nombreCtrl),
+            const SizedBox(height: 15),
 
-            SizedBox(height: 15),
+            const LabelUcad(texto: "Apellidos"),
+            InputUcad(hint: "Tus apellidos", controller: apellidoCtrl),
+            const SizedBox(height: 15),
 
-            LabelUcad(texto: "Apellidos"),
-            InputUcad(hint: "Ingresa tus apellidos", controller: apellidoCtrl),
+            const LabelUcad(texto: "Correo Institucional"),
+            InputUcad(hint: "usuario@ucad.edu.sv", controller: correoCtrl),
+            const SizedBox(height: 15),
 
-            SizedBox(height: 15),
+            const LabelUcad(texto: "Contraseña"),
+            InputUcad(hint: "Mínimo 8 caracteres", isPassword: true, controller: passCtrl),
+            const SizedBox(height: 20),
 
-            LabelUcad(texto: "Correo"),
-            InputUcad(hint: "correo@ucad.edu.sv", controller: correoCtrl),
-
-            SizedBox(height: 15),
-
-            LabelUcad(texto: "Contraseña"),
-            InputUcad(
-              hint: "Mínimo 8 caracteres",
-              isPassword: true,
-              controller: passCtrl,
-            ),
-
-            SizedBox(height: 20),
-
-            // 👤 TIPO USUARIO
-            LabelUcad(texto: "Tipo de usuario"),
-            DropdownButtonFormField(
+            const LabelUcad(texto: "Tipo de usuario"),
+            DropdownButtonFormField<String>(
               value: tipoUsuario,
-              items: [
-                "Estudiante",
-                "Docente",
-                "Empleado",
-              ].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: (v) => setState(() => tipoUsuario = v!),
+              dropdownColor: Colors.white,
+              items: ["Estudiante", "Docente", "Empleado", "Vigilante"]
+                  .map((e) => DropdownMenuItem(
+                      value: e, 
+                      child: Text(e, style: const TextStyle(color: Colors.black))))
+                  .toList(),
+              onChanged: (v) => setState(() {
+                tipoUsuario = v!;
+                facultad = null;
+                carrera = null;
+              }),
               decoration: InputDecoration(
                 filled: true,
                 fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
               ),
             ),
 
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-            // 🎓 ESTUDIANTE
             if (tipoUsuario == "Estudiante") ...[
-              LabelUcad(texto: "Facultad"),
-              DropdownButtonFormField(
+              const LabelUcad(texto: "Facultad"),
+              DropdownButtonFormField<String>(
                 value: facultad,
+                hint: const Text("Selecciona tu Facultad"),
                 items: carrerasPorFacultad.keys
                     .map((f) => DropdownMenuItem(value: f, child: Text(f)))
                     .toList(),
-                onChanged: (v) {
-                  setState(() {
-                    facultad = v;
-                    carrera = null;
-                  });
-                },
+                onChanged: (v) => setState(() { 
+                  facultad = v; 
+                  carrera = null; 
+                }),
                 decoration: InputDecoration(
-                  filled: true,
+                  filled: true, 
                   fillColor: Colors.white,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 ),
               ),
-
-              SizedBox(height: 15),
-
-              if (facultad != null)
-                DropdownButtonFormField(
+              const SizedBox(height: 15),
+              
+              if (facultad != null) ...[
+                const LabelUcad(texto: "Carrera"),
+                DropdownButtonFormField<String>(
                   value: carrera,
+                  hint: const Text("Selecciona tu Carrera"),
                   items: carrerasPorFacultad[facultad]!
                       .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                       .toList(),
                   onChanged: (v) => setState(() => carrera = v),
                   decoration: InputDecoration(
-                    filled: true,
+                    filled: true, 
                     fillColor: Colors.white,
-                    hintText: "Selecciona carrera",
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
-
-              SizedBox(height: 15),
-
-              LabelUcad(texto: "Carnet"),
-              InputUcad(hint: "Ej: 2020-1234", controller: carnetCtrl),
+                const SizedBox(height: 15),
+              ],
+              
+              const LabelUcad(texto: "Número de Carnet"),
+              InputUcad(hint: "Ej: 2024-0001", controller: carnetCtrl),
+            ] 
+            else ...[
+              const LabelUcad(texto: "Código Institucional"),
+              InputUcad(hint: "Código de empleado", controller: codigoCtrl),
             ],
 
-            // 👨‍🏫 DOCENTE / EMPLEADO
-            if (tipoUsuario != "Estudiante") ...[
-              LabelUcad(texto: "Código institucional"),
-              InputUcad(
-                hint: "Código proporcionado por la universidad",
-                controller: codigoCtrl,
-              ),
-            ],
+            const SizedBox(height: 35),
 
-            SizedBox(height: 25),
-
-            BotonUcad(
-              texto: "Registrarse",
-              color: AppColors.amarillo,
-              onPressed: registrar,
-            ),
-
-            SizedBox(height: 15),
-
-            Center(
-              child: Text(
-                "UCAD Parki ©",
-                style: TextStyle(color: Colors.white54),
-              ),
-            ),
+            cargando
+                ? const Center(child: CircularProgressIndicator(color: AppColors.amarillo))
+                : BotonUcad(
+                    texto: "REGISTRARSE",
+                    color: AppColors.amarillo,
+                    onPressed: registrar,
+                  ),
+            const SizedBox(height: 20),
           ],
         ),
       ),

@@ -9,27 +9,33 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
+  # Estas deben ir alineadas con 'flutter', no dentro de 'sdk'
+  provider: ^6.1.1
+  shared_preferences: ^2.2.2
   supabase_flutter: ^2.12.2
+  image_picker: ^1.0.7
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
+  flutter_lints: ^2.0.0
   flutter_native_splash: ^2.4.0
 
 flutter:
   uses-material-design: true
-
   assets:
     - assets/parky.png
     - assets/avatar1.png
     - assets/avatar2.png
     - assets/avatar3.png
     - assets/avatar4.png
+    - assets/google.png
 
 flutter_native_splash:
   color: "#0D2784"
-  image: assets/logo.png
+  image: assets/parky.png 
   android: true
   ios: true
+
+
+   

@@ -1,110 +1,65 @@
 import 'package:flutter/material.dart';
-import 'package:ucad_parki/widgets/switch_item.dart';
+import 'package:provider/provider.dart';
+import 'package:ucad_parki/providers/config_provider.dart';
 import 'package:ucad_parki/utils/app_colors.dart';
 
-class ConfiguracionPage extends StatefulWidget {
-  @override
-  _ConfiguracionPageState createState() => _ConfiguracionPageState();
-}
-
-class _ConfiguracionPageState extends State<ConfiguracionPage> {
-  bool modoOscuro = false;
-  String idiomaSeleccionado = "Español";
-
-  List<String> idiomas = ["Español", "Inglés"];
-
+class ConfiguracionPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final config = Provider.of<ConfigProvider>(context);
+
     return Scaffold(
-      backgroundColor: AppColors.azul,
-
-      body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
-
-            // VOLVER
-            Align(
-              alignment: Alignment.topLeft,
-              child: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
-              ),
+      appBar: AppBar(
+        title: Text(config.locale.languageCode == 'es' ? "Configuración" : "Settings"),
+        backgroundColor: AppColors.azul,
+      ),
+      body: ListView(
+        children: [
+          // SWITCH MODO OSCURO
+          ListTile(
+            leading: Icon(Icons.dark_mode, color: AppColors.azul),
+            title: Text("Modo Oscuro"),
+            trailing: Switch(
+              value: config.isDarkMode,
+              onChanged: (value) => config.toggleTheme(value),
             ),
+          ),
+          Divider(),
+          // SELECCIÓN DE IDIOMA
+          ListTile(
+            leading: Icon(Icons.language, color: AppColors.azul),
+            title: Text("Idioma"),
+            subtitle: Text(config.locale.languageCode == 'es' ? "Español" : "English"),
+            onTap: () {
+              _mostrarSelectorIdioma(context, config);
+            },
+          ),
+        ],
+      ),
+    );
+  }
 
-            const SizedBox(height: 10),
-
-            //  TÍTULO
-            const Text(
-              "Configuración",
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            //  TARJETA
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
-                ),
-                child: Column(
-                  children: [
-                    // 🌙 MODO OSCURO
-                    SwitchItem(
-                      texto: "Modo oscuro",
-                      icono: Icons.dark_mode,
-                      valor: modoOscuro,
-                      color: AppColors.amarillo,
-                      onChanged: (value) {
-                        setState(() {
-                          modoOscuro = value;
-                        });
-                      },
-                    ),
-
-                    const Divider(),
-
-                    //  IDIOMA
-                    ListTile(
-                      leading: Icon(Icons.language, color: AppColors.azul),
-                      title: const Text("Idioma"),
-                      trailing: DropdownButton<String>(
-                        value: idiomaSeleccionado,
-                        underline: const SizedBox(),
-                        items: idiomas.map((String value) {
-                          return DropdownMenuItem<String>(
-                            value: value,
-                            child: Text(value),
-                          );
-                        }).toList(),
-                        onChanged: (nuevo) {
-                          setState(() {
-                            idiomaSeleccionado = nuevo!;
-                          });
-                        },
-                      ),
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    //  INFO
-                    const Text(
-                      "Personaliza la apariencia y el idioma de la aplicación.",
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+  void _mostrarSelectorIdioma(BuildContext context, ConfigProvider config) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            title: Text("Español"),
+            onTap: () {
+              config.changeLanguage('es');
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            title: Text("English"),
+            onTap: () {
+              config.changeLanguage('en');
+              Navigator.pop(context);
+            },
+          ),
+        ],
       ),
     );
   }

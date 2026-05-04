@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ucad_parki/widgets/input_field.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ucad_parki/utils/app_colors.dart';
 
 class EditarPerfil extends StatefulWidget {
@@ -8,211 +8,112 @@ class EditarPerfil extends StatefulWidget {
 }
 
 class _EditarPerfilState extends State<EditarPerfil> {
-  int avatarSeleccionado = 0;
-  bool mostrarAvatares = false;
-  bool cambiarPassword = false;
+  final supabase = Supabase.instance.client;
+  final nombreCtrl = TextEditingController();
+  final apellidoCtrl = TextEditingController();
+  final passCtrl = TextEditingController();
+  bool cargando = false;
 
-  List<String> avatars = [
-    "assets/avatar1.png",
-    "assets/avatar2.png",
-    "assets/avatar3.png",
-    "assets/avatar4.png",
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _cargarDatosActuales();
+  }
 
-  final nombre = TextEditingController();
-  final apellido = TextEditingController();
-  final correo = TextEditingController();
-  final password = TextEditingController();
-  final confirmarPassword = TextEditingController();
+  // Carga los datos que ya existen en la base de datos
+  Future<void> _cargarDatosActuales() async {
+    final user = supabase.auth.currentUser;
+    if (user != null) {
+      final data = await supabase
+          .from('usuarios')
+          .select('nombres, apellidos')
+          .eq('id_usuario', user.id)
+          .single();
+      
+      setState(() {
+        nombreCtrl.text = data['nombres'];
+        apellidoCtrl.text = data['apellidos'];
+      });
+    }
+  }
+
+  Future<void> _guardarCambios() async {
+    setState(() => cargando = true);
+    try {
+      final user = supabase.auth.currentUser;
+
+      // 1. Actualizar Nombres y Apellidos en la tabla pública
+      await supabase.from('usuarios').update({
+        'nombres': nombreCtrl.text.trim(),
+        'apellidos': apellidoCtrl.text.trim(),
+      }).eq('id_usuario', user!.id);
+
+      // 2. Si el usuario escribió algo en el campo de contraseña, actualizarla en Auth
+      if (passCtrl.text.isNotEmpty) {
+        if (passCtrl.text.length < 6) {
+          throw "La contraseña debe tener al menos 6 caracteres";
+        }
+        await supabase.auth.updateUser(
+          UserAttributes(password: passCtrl.text.trim()),
+        );
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Perfil actualizado correctamente")),
+      );
+      Navigator.pop(context); // Regresa a la pantalla de perfil
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+      );
+    } finally {
+      setState(() => cargando = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.azul,
-
-      body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
-
-            //  VOLVER
-            Align(
-              alignment: Alignment.topLeft,
-              child: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
+      appBar: AppBar(
+        title: const Text("Editar Perfil"),
+        backgroundColor: AppColors.azul,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              TextField(
+                controller: nombreCtrl,
+                decoration: const InputDecoration(labelText: "Nombres"),
               ),
-            ),
-
-            const SizedBox(height: 10),
-
-            //  AVATAR
-            Stack(
-              children: [
-                CircleAvatar(
-                  radius: 65,
-                  backgroundColor: Colors.white,
-                  child: CircleAvatar(
-                    radius: 60,
-                    backgroundImage: AssetImage(avatars[avatarSeleccionado]),
-                  ),
+              const SizedBox(height: 15),
+              TextField(
+                controller: apellidoCtrl,
+                decoration: const InputDecoration(labelText: "Apellidos"),
+              ),
+              const SizedBox(height: 15),
+              TextField(
+                controller: passCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: "Nueva Contraseña (dejar en blanco para no cambiar)",
+                  helperText: "Mínimo 6 caracteres",
                 ),
-
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        mostrarAvatares = !mostrarAvatares;
-                      });
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppColors.amarillo,
-                        shape: BoxShape.circle,
+              ),
+              const SizedBox(height: 30),
+              cargando
+                  ? const CircularProgressIndicator()
+                  : ElevatedButton(
+                      onPressed: _guardarCambios,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.amarillo,
+                        minimumSize: const Size(double.infinity, 50),
                       ),
-                      child: const Icon(Icons.edit, color: Colors.white),
+                      child: const Text("GUARDAR CAMBIOS", style: TextStyle(color: Colors.black)),
                     ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 15),
-
-            //  AVATARES
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              height: mostrarAvatares ? 80 : 0,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: avatars.length,
-                itemBuilder: (context, index) {
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        avatarSeleccionado = index;
-                      });
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: avatarSeleccionado == index
-                              ? AppColors.amarillo
-                              : Colors.transparent,
-                          width: 3,
-                        ),
-                        shape: BoxShape.circle,
-                      ),
-                      child: CircleAvatar(
-                        radius: 30,
-                        backgroundImage: AssetImage(avatars[index]),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            //  FORMULARIO
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      InputField(
-                        label: "Nombre",
-                        icono: Icons.person,
-                        controller: nombre,
-                      ),
-
-                      InputField(
-                        label: "Apellidos",
-                        icono: Icons.badge,
-                        controller: apellido,
-                      ),
-
-                      InputField(
-                        label: "Correo",
-                        icono: Icons.email,
-                        controller: correo,
-                      ),
-
-                      const SizedBox(height: 10),
-
-                      //  SWITCH
-                      SwitchListTile(
-                        value: cambiarPassword,
-                        activeColor: AppColors.amarillo,
-                        title: const Text("Cambiar contraseña"),
-                        onChanged: (value) {
-                          setState(() {
-                            cambiarPassword = value;
-                          });
-                        },
-                      ),
-
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        height: cambiarPassword ? 160 : 0,
-                        child: Column(
-                          children: [
-                            InputField(
-                              label: "Nueva contraseña",
-                              icono: Icons.lock,
-                              controller: password,
-                              esPassword: true,
-                            ),
-                            InputField(
-                              label: "Confirmar contraseña",
-                              icono: Icons.lock_outline,
-                              controller: confirmarPassword,
-                              esPassword: true,
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.amarillo,
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                          ),
-                          onPressed: () {
-                            print("Guardado");
-                          },
-                          child: Text(
-                            "Guardar Cambios",
-                            style: TextStyle(
-                              color: AppColors.azul,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
