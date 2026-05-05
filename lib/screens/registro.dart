@@ -59,7 +59,7 @@ class _RegistroPageState extends State<RegistroPage> {
   }
 
   Future<void> registrar() async {
-    // 1. Validaciones
+    // 1. Validaciones de campos
     if (nombreCtrl.text.trim().isEmpty || apellidoCtrl.text.trim().isEmpty) {
       mostrar("Por favor, ingresa tu nombre completo");
       return;
@@ -83,47 +83,26 @@ class _RegistroPageState extends State<RegistroPage> {
     setState(() => cargando = true);
 
     try {
-      // 2. Registro en Supabase Auth
-      final AuthResponse res = await supabase.auth.signUp(
-        email: correoCtrl.text.trim(),
-        password: passCtrl.text.trim(),
+      // 2. Registro en Supabase Auth incluyendo METADATOS
+      // Esto es lo que permite que el Login funcione sin consultar tablas adicionales
+      await supabase.auth.signUp(
+         email: correoCtrl.text.trim(),
+         password: passCtrl.text.trim(),
+         data: {
+          'nombres': nombreCtrl.text.trim(),
+          'tipo_usuario': tipoUsuario, // Esta variable debe ser "Vigilante" o "Empleado"
+        },
       );
 
-      final String? userId = res.user?.id;
-
-      if (userId != null) {
-        // 3. Inserción en la tabla 'usuarios'
-        // IMPORTANTE: Asegúrate de que estas columnas existan en SQL
-        await supabase.from('usuarios').insert({
-          'id_usuario': userId, 
-          'nombres': nombreCtrl.text.trim(),
-          'apellidos': apellidoCtrl.text.trim(),
-          'correo': correoCtrl.text.trim(),
-          'tipo_usuario': tipoUsuario,
-          'facultad': facultad,
-          'carrera': carrera,
-          'identificacion': tipoUsuario == "Estudiante" 
-              ? carnetCtrl.text.trim() 
-              : codigoCtrl.text.trim(),
-          'estado': 'activo',
-          'fecha_registro': DateTime.now().toIso8601String(),
-          'url_avatar': null, // Se inicializa vacío para evitar errores de null
-        });
-
-        if (mounted) {
-          mostrar("¡Cuenta creada con éxito! Bienvenido.");
-          Navigator.pop(context);
-        }
+      if (mounted) {
+        mostrar("¡Cuenta creada con éxito! Por favor inicia sesión.");
+        Navigator.pop(context);
       }
-    } on PostgrestException catch (e) {
-      // Error específico de la base de datos (Ej: falta una columna o RLS)
-      debugPrint("Error SQL: ${e.message}");
-      mostrar("Error de base de datos: Verifica que el perfil se haya creado.");
     } on AuthException catch (e) {
       mostrar(e.message);
     } catch (e) {
       debugPrint("Error Registro: $e");
-      mostrar("Error inesperado: No se pudo completar el registro.");
+      mostrar("Ocurrió un error inesperado.");
     } finally {
       if (mounted) setState(() => cargando = false);
     }
@@ -140,7 +119,8 @@ class _RegistroPageState extends State<RegistroPage> {
     return Scaffold(
       backgroundColor: AppColors.azul,
       appBar: AppBar(
-        title: const Text("Crear Cuenta", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: const Text("Crear Cuenta",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: AppColors.azul,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
@@ -153,27 +133,27 @@ class _RegistroPageState extends State<RegistroPage> {
             const LabelUcad(texto: "Nombres"),
             InputUcad(hint: "Tus nombres", controller: nombreCtrl),
             const SizedBox(height: 15),
-
             const LabelUcad(texto: "Apellidos"),
             InputUcad(hint: "Tus apellidos", controller: apellidoCtrl),
             const SizedBox(height: 15),
-
             const LabelUcad(texto: "Correo Institucional"),
             InputUcad(hint: "usuario@ucad.edu.sv", controller: correoCtrl),
             const SizedBox(height: 15),
-
             const LabelUcad(texto: "Contraseña"),
-            InputUcad(hint: "Mínimo 8 caracteres", isPassword: true, controller: passCtrl),
+            InputUcad(
+                hint: "Mínimo 8 caracteres",
+                isPassword: true,
+                controller: passCtrl),
             const SizedBox(height: 20),
-
             const LabelUcad(texto: "Tipo de usuario"),
             DropdownButtonFormField<String>(
               value: tipoUsuario,
               dropdownColor: Colors.white,
               items: ["Estudiante", "Docente", "Empleado", "Vigilante"]
                   .map((e) => DropdownMenuItem(
-                      value: e, 
-                      child: Text(e, style: const TextStyle(color: Colors.black))))
+                      value: e,
+                      child:
+                          Text(e, style: const TextStyle(color: Colors.black))))
                   .toList(),
               onChanged: (v) => setState(() {
                 tipoUsuario = v!;
@@ -184,12 +164,11 @@ class _RegistroPageState extends State<RegistroPage> {
                 filled: true,
                 fillColor: Colors.white,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
               ),
             ),
-
             const SizedBox(height: 20),
-
             if (tipoUsuario == "Estudiante") ...[
               const LabelUcad(texto: "Facultad"),
               DropdownButtonFormField<String>(
@@ -198,18 +177,18 @@ class _RegistroPageState extends State<RegistroPage> {
                 items: carrerasPorFacultad.keys
                     .map((f) => DropdownMenuItem(value: f, child: Text(f)))
                     .toList(),
-                onChanged: (v) => setState(() { 
-                  facultad = v; 
-                  carrera = null; 
+                onChanged: (v) => setState(() {
+                  facultad = v;
+                  carrera = null;
                 }),
                 decoration: InputDecoration(
-                  filled: true, 
+                  filled: true,
                   fillColor: Colors.white,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10)),
                 ),
               ),
               const SizedBox(height: 15),
-              
               if (facultad != null) ...[
                 const LabelUcad(texto: "Carrera"),
                 DropdownButtonFormField<String>(
@@ -220,26 +199,24 @@ class _RegistroPageState extends State<RegistroPage> {
                       .toList(),
                   onChanged: (v) => setState(() => carrera = v),
                   decoration: InputDecoration(
-                    filled: true, 
+                    filled: true,
                     fillColor: Colors.white,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
                 const SizedBox(height: 15),
               ],
-              
               const LabelUcad(texto: "Número de Carnet"),
               InputUcad(hint: "Ej: 2024-0001", controller: carnetCtrl),
-            ] 
-            else ...[
+            ] else ...[
               const LabelUcad(texto: "Código Institucional"),
               InputUcad(hint: "Código de empleado", controller: codigoCtrl),
             ],
-
             const SizedBox(height: 35),
-
             cargando
-                ? const Center(child: CircularProgressIndicator(color: AppColors.amarillo))
+                ? const Center(
+                    child: CircularProgressIndicator(color: AppColors.amarillo))
                 : BotonUcad(
                     texto: "REGISTRARSE",
                     color: AppColors.amarillo,

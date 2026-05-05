@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:image_picker/image_picker.dart'; // Para seleccionar la foto
+import 'package:image_picker/image_picker.dart';
 import 'package:ucad_parki/screens/vigilante_home.dart';
 import 'package:ucad_parki/screens/editar_perfil.dart';
 import 'package:ucad_parki/screens/login.dart';
@@ -19,38 +19,31 @@ class PerfilPage extends StatefulWidget {
 
 class _PerfilPageState extends State<PerfilPage> {
   final supabase = Supabase.instance.client;
-  Map<String, dynamic>? datosUsuario;
-  bool cargando = true;
+  
+  String nombreMostrar = "";
+  String rolMostrar = "";
+  String? fotoUrl;
+  bool cargando = false;
 
   @override
   void initState() {
     super.initState();
-    _obtenerDatosPerfil();
+    _cargarDatosDesdeAuth();
   }
 
-  Future<void> _obtenerDatosPerfil() async {
-    try {
-      final user = supabase.auth.currentUser;
-      if (user != null) {
-        final data = await supabase
-            .from('usuarios')
-            .select()
-            .eq('id_usuario', user.id)
-            .maybeSingle();
-
-        if (mounted) {
-          setState(() {
-            datosUsuario = data;
-            cargando = false;
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) setState(() => cargando = false);
+  void _cargarDatosDesdeAuth() {
+    final user = supabase.auth.currentUser;
+    if (user != null) {
+      setState(() {
+        nombreMostrar = "${user.userMetadata?['nombres'] ?? ''} ${user.userMetadata?['apellidos'] ?? ''}".trim();
+        rolMostrar = user.userMetadata?['tipo_usuario'] ?? "Usuario";
+        fotoUrl = user.userMetadata?['url_avatar'];
+        
+        if (nombreMostrar.isEmpty) nombreMostrar = "Usuario UCAD";
+      });
     }
   }
 
-  // FUNCIÓN PARA SELECCIONAR Y SUBIR LA FOTO
   Future<void> _cambiarFoto() async {
     final picker = ImagePicker();
     final XFile? imagenSeleccionada = await picker.pickImage(
@@ -69,28 +62,26 @@ class _PerfilPageState extends State<PerfilPage> {
       final fileName = '${user!.id}.$fileExtension';
       final filePath = 'avatars/$fileName';
 
-      // 1. Subir imagen al Bucket 'perfiles' de Supabase Storage
       await supabase.storage.from('perfiles').upload(
             filePath,
             file,
             fileOptions: const FileOptions(upsert: true),
           );
 
-      // 2. Obtener la URL pública
-      final String publicUrl =
-          supabase.storage.from('perfiles').getPublicUrl(filePath);
+      final String publicUrl = supabase.storage.from('perfiles').getPublicUrl(filePath);
 
-      // 3. Actualizar la URL en la tabla 'usuarios'
-      await supabase.from('usuarios').update({
-        'url_avatar': publicUrl,
-      }).eq('id_usuario', user.id);
+      await supabase.auth.updateUser(
+        UserAttributes(data: {'url_avatar': publicUrl}),
+      );
 
-      _obtenerDatosPerfil(); // Recargar datos
+      _cargarDatosDesdeAuth();
+      
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error al subir imagen: $e")),
+        SnackBar(content: Text("Error al actualizar foto: $e")),
       );
-      setState(() => cargando = false);
+    } finally {
+      if (mounted) setState(() => cargando = false);
     }
   }
 
@@ -106,10 +97,6 @@ class _PerfilPageState extends State<PerfilPage> {
 
   @override
   Widget build(BuildContext context) {
-    final nombre = datosUsuario?['nombres'] ?? "Cargando...";
-    final apellido = datosUsuario?['apellidos'] ?? "";
-    final fotoUrl = datosUsuario?['url_avatar'] ?? 'assets/avatar1.png';
-
     return Scaffold(
       backgroundColor: AppColors.azul,
       body: SafeArea(
@@ -117,7 +104,7 @@ class _PerfilPageState extends State<PerfilPage> {
             ? const Center(child: CircularProgressIndicator(color: Colors.white))
             : Column(
                 children: [
-                  const SizedBox(height: 10),
+                  // BOTÓN VOLVER
                   Align(
                     alignment: Alignment.topLeft,
                     child: IconButton(
@@ -129,99 +116,90 @@ class _PerfilPageState extends State<PerfilPage> {
                     ),
                   ),
 
-                  // FOTO CON BOTÓN DE EDICIÓN
+                  const SizedBox(height: 10),
+
+                  // SECCIÓN DE FOTO, NOMBRE Y ROL (DISEÑO image_2ae8bd.jpg)
                   Stack(
+                    alignment: Alignment.bottomRight,
                     children: [
                       Container(
+                        width: 150,
+                        height: 150,
                         decoration: const BoxDecoration(
+                          color: Colors.white,
                           shape: BoxShape.circle,
-                          boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
                         ),
-                        child: CircleAvatar(
-                          radius: 75,
-                          backgroundColor: Colors.grey[300],
-                          backgroundImage: fotoUrl.startsWith('http')
-                              ? NetworkImage(fotoUrl) as ImageProvider
-                              : AssetImage(fotoUrl),
+                        child: ClipOval(
+                          child: fotoUrl != null 
+                            ? Image.network(fotoUrl!, fit: BoxFit.cover)
+                            : Image.asset('assets/parky.png', fit: BoxFit.cover),
                         ),
                       ),
-                      Positioned(
-                        bottom: 0,
-                        right: 5,
-                        child: GestureDetector(
-                          onTap: _cambiarFoto, // Acción de editar
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: const BoxDecoration(
-                              color: AppColors.amarillo,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.edit, color: AppColors.azul, size: 20),
+                      // BOTÓN AMARILLO DE EDITAR
+                      GestureDetector(
+                        onTap: _cambiarFoto,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            color: AppColors.amarillo,
+                            shape: BoxShape.circle,
                           ),
+                          child: const Icon(Icons.edit, color: Colors.black, size: 22),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 15),
+                  
+                  const SizedBox(height: 20),
+                  
                   Text(
-                    "$nombre $apellido",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    nombreMostrar,
+                    style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    rolMostrar,
+                    style: const TextStyle(color: Colors.white70, fontSize: 16),
                   ),
 
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 35),
 
-                  // TARJETA DE OPCIONES (Mantiene tu diseño original)
+                  // CONTENEDOR BLANCO DE OPCIONES
                   Expanded(
                     child: Container(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.fromLTRB(20, 30, 20, 20),
                       decoration: const BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.vertical(top: Radius.circular(35)),
+                        borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
                       ),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          children: [
-                            ItemPerfil(
-                              texto: "Mi perfil",
-                              icono: Icons.person,
-                              color: AppColors.azul,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (context) =>  EditarPerfil()),
-                              ),
-                            ),
-                            ItemPerfil(
-                              texto: "Configuración",
-                              icono: Icons.settings,
-                              color: AppColors.azul,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (context) =>  ConfiguracionPage()),
-                              ),
-                            ),
-                            ItemPerfil(
-                              texto: "Notificaciones",
-                              icono: Icons.notifications,
-                              color: AppColors.azul,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (context) =>  NotificacionesPage()),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            const Divider(),
-                            ItemPerfil(
-                              texto: "Cerrar sesión",
-                              icono: Icons.logout,
-                              color: Colors.red,
-                              onTap: _cerrarSesion,
-                            ),
-                          ],
-                        ),
+                      child: Column(
+                        children: [
+                          ItemPerfil(
+                            texto: "Mi perfil",
+                            icono: Icons.person_outline,
+                            color: AppColors.azul,
+                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) =>  EditarPerfil())),
+                          ),
+                          ItemPerfil(
+                            texto: "Configuración",
+                            icono: Icons.settings_outlined,
+                            color: AppColors.azul,
+                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) =>  ConfiguracionPage())),
+                          ),
+                          ItemPerfil(
+                            texto: "Notificaciones",
+                            icono: Icons.notifications_none,
+                            color: AppColors.azul,
+                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) =>  NotificacionesPage())),
+                          ),
+                          const Spacer(),
+                          const Divider(height: 40),
+                          ItemPerfil(
+                            texto: "Cerrar sesión",
+                            icono: Icons.logout,
+                            color: Colors.redAccent,
+                            onTap: _cerrarSesion,
+                          ),
+                        ],
                       ),
                     ),
                   ),

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Para recordar correo
 import 'package:ucad_parki/screens/vigilante_home.dart';
 import 'package:ucad_parki/widgets/input_ucad.dart';
 import 'package:ucad_parki/widgets/boton_ucad.dart';
 import 'package:ucad_parki/widgets/label_ucad.dart';
 import 'package:ucad_parki/utils/app_colors.dart';
 import 'package:ucad_parki/screens/registro.dart';
+import 'package:ucad_parki/screens/recuperar_password.dart'; // Importa tu nueva pantalla
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -19,9 +21,34 @@ class _LoginPageState extends State<LoginPage> {
   final correoCtrl = TextEditingController();
   final passCtrl = TextEditingController();
   bool cargando = false;
+  bool _recordar = false; // Estado del checkbox
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarCredenciales();
+  }
+
+  // Carga el correo guardado al iniciar la app
+  Future<void> _cargarCredenciales() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      correoCtrl.text = prefs.getString('email_usuario') ?? "";
+      _recordar = correoCtrl.text.isNotEmpty;
+    });
+  }
+
+  // Guarda o elimina el correo según la preferencia
+  Future<void> _gestionarRecordatorio() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_recordar) {
+      await prefs.setString('email_usuario', correoCtrl.text.trim());
+    } else {
+      await prefs.remove('email_usuario');
+    }
+  }
 
   Future<void> iniciarSesion() async {
-    // Validación básica de campos vacíos
     if (correoCtrl.text.trim().isEmpty || passCtrl.text.trim().isEmpty) {
       mostrarMensaje("Por favor, ingresa tus credenciales");
       return;
@@ -30,68 +57,48 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => cargando = true);
 
     try {
-      // 1. Autenticación con Supabase Auth
       final AuthResponse res = await supabase.auth.signInWithPassword(
         email: correoCtrl.text.trim(),
         password: passCtrl.text.trim(),
       );
 
-      if (res.user != null) {
-        // 2. Búsqueda del perfil en la tabla 'usuarios' vinculando por el UUID de Auth
-        final data = await supabase
-            .from('usuarios')
-            .select('tipo_usuario, nombres, estado')
-            .eq('id_usuario', res.user!.id)
-            .maybeSingle();
+      await _gestionarRecordatorio(); // Guardar preferencia localmente
 
-        // Si el usuario existe en Auth pero no en la tabla pública 'usuarios'
-        if (data == null) {
-          await supabase.auth.signOut();
-          mostrarMensaje("Perfil no encontrado en la base de datos.");
-          return;
-        }
-
-        // Validación de estado de cuenta
-        if (data['estado'] != 'activo') {
-          await supabase.auth.signOut();
-          mostrarMensaje("Tu cuenta está inactiva.");
-          return;
-        }
+      final user = res.user;
+      if (user != null) {
+        final String? rol = user.userMetadata?['tipo_usuario'];
+        final String nombre = user.userMetadata?['nombres'] ?? "Usuario";
 
         if (!mounted) return;
 
-        // 3. Redirección basada en el rol (tipo_usuario)
-        String rol = data['tipo_usuario'];
-        
         if (rol == 'Vigilante' || rol == 'Empleado') {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) =>  VigilanteHome()),
           );
+        } else if (rol == 'Estudiante' || rol == 'Docente') {
+          mostrarMensaje("Bienvenido $nombre (Acceso Estudiante/Docente)");
         } else {
-          // Redirección para Estudiantes o Visitas
-          mostrarMensaje("Bienvenido ${data['nombres']}");
-          // Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const EstudianteHome()));
+          mostrarMensaje("Rol no reconocido: $rol");
         }
       }
     } on AuthException catch (e) {
-      // Errores específicos de autenticación (credenciales inválidas, etc.)
       mostrarMensaje("Acceso denegado: ${e.message}");
     } catch (e) {
-      // Errores de red o de sincronización de tablas
-      mostrarMensaje("Error de sincronización con el perfil.");
+      mostrarMensaje("Error de conexión");
     } finally {
       if (mounted) setState(() => cargando = false);
     }
   }
 
   void mostrarMensaje(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: Colors.black87),
+    );
   }
 
   @override
   void dispose() {
-    // Limpieza de controladores para evitar fugas de memoria
     correoCtrl.dispose();
     passCtrl.dispose();
     super.dispose();
@@ -108,46 +115,52 @@ class _LoginPageState extends State<LoginPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Center(
-                child: Image.asset(
-                  'assets/parky.png',
-                  height: 220,
-                  errorBuilder: (context, error, stackTrace) =>
-                      const Icon(Icons.directions_car, size: 100, color: Colors.white),
+                child: Image.asset('assets/parky.png', height: 200,
+                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.directions_car, size: 100, color: Colors.white),
                 ),
               ),
               const SizedBox(height: 30),
-              
               const LabelUcad(texto: "Correo"),
-              const SizedBox(height: 8),
               InputUcad(hint: "ejemplo@ucad.edu.sv", controller: correoCtrl),
               const SizedBox(height: 20),
-              
               const LabelUcad(texto: "Contraseña"),
-              const SizedBox(height: 8),
               InputUcad(hint: "Tu contraseña", isPassword: true, controller: passCtrl),
-              const SizedBox(height: 25),
               
+              // OPCIONES DE RECORDAR Y OLVIDO
+              Row(
+                children: [
+                  Theme(
+                    data: ThemeData(unselectedWidgetColor: Colors.white70),
+                    child: Checkbox(
+                      value: _recordar,
+                      activeColor: AppColors.amarillo,
+                      checkColor: Colors.black,
+                      onChanged: (val) => setState(() => _recordar = val!),
+                    ),
+                  ),
+                  const Text("Recordar", style: TextStyle(color: Colors.white70)),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => RecuperarPassword())),
+                    child: const Text("¿Olvidaste tu contraseña?", 
+                      style: TextStyle(color: AppColors.amarillo, fontWeight: FontWeight.bold, fontSize: 13)),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 20),
               cargando
                   ? const Center(child: CircularProgressIndicator(color: AppColors.amarillo))
                   : BotonUcad(
-                      texto: "Iniciar sesión",
+                      texto: "INICIAR SESIÓN",
                       color: AppColors.amarillo,
                       onPressed: iniciarSesion,
                     ),
-                    
-              const SizedBox(height: 15),
+              const SizedBox(height: 10),
               Center(
                 child: TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const RegistroPage()),
-                    );
-                  },
-                  child: const Text(
-                    "¿No tienes cuenta? Regístrate", 
-                    style: TextStyle(color: Colors.white70)
-                  ),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const RegistroPage())),
+                  child: const Text("¿No tienes cuenta? Regístrate", style: TextStyle(color: Colors.white70)),
                 ),
               ),
             ],

@@ -2,48 +2,69 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:ucad_parki/screens/login.dart';
+import 'package:ucad_parki/screens/actualizar_password.dart'; // Importante importar la nueva pantalla
 import 'package:ucad_parki/providers/config_provider.dart'; 
 import 'package:ucad_parki/utils/app_colors.dart';
 
 void main() async {
-  // 1. Asegurar inicialización de widgets
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 2. Inicializar Supabase con tus credenciales reales
+  // Inicialización de Supabase
   await Supabase.initialize(
     url: 'https://gxepethewxyqqqpgvqhb.supabase.co',
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd4ZXBldGhld3h5cXFxcGd2cWhiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNzIyNTgsImV4cCI6MjA5MTg0ODI1OH0.5dTq985f0klHI0JcetEskC-_Zr453ylBuONhnwh-sT8',
+    // Permite que Supabase maneje los enlaces externos automáticamente
+    authOptions: const FlutterAuthClientOptions(authFlowType: AuthFlowType.pkce),
   );
 
-  // 3. Ejecutar la App envolviéndola en el Provider
   runApp(
     ChangeNotifierProvider(
       create: (_) => ConfigProvider(),
-      child: const MyApp(), // Agregado const para rendimiento
+      child: const MyApp(),
     ),
   );
 }
 
-class MyApp extends StatelessWidget {
-  // Corregido: Se agregó el parámetro 'key' y el constructor const (image_3ca6a1.png)
-  const MyApp({super.key}); 
+class MyApp extends StatefulWidget {
+  const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final _navigatorKey = GlobalKey<NavigatorState>(); // Llave global para navegar sin contexto directo
+
+  @override
+  void initState() {
+    super.initState();
+    _configurarEscuchaAutenticacion();
+  }
+
+  void _configurarEscuchaAutenticacion() {
+    // Este listener detecta cuando el usuario viene de un enlace de recuperación (image_200687.png)
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      final AuthChangeEvent event = data.event;
+      
+      if (event == AuthChangeEvent.passwordRecovery) {
+        // Redirige a la pantalla de actualización usando la llave global
+        _navigatorKey.currentState?.push(
+          MaterialPageRoute(builder: (context) => const ActualizarPasswordPage()),
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Escucha los cambios del ConfigProvider (Modo oscuro / Idioma)
     final config = Provider.of<ConfigProvider>(context);
 
     return MaterialApp(
+      navigatorKey: _navigatorKey, // Se asigna la llave aquí
       debugShowCheckedModeBanner: false,
       title: 'UCAD Parking',
-      
-      // Configuración de Idioma
       locale: config.locale,
-      
-      // Configuración de Temas
       themeMode: config.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-      
-      // Tema Claro
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.light,
@@ -54,8 +75,6 @@ class MyApp extends StatelessWidget {
         ),
         scaffoldBackgroundColor: Colors.white,
       ),
-      
-      // Tema Oscuro
       darkTheme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
@@ -65,8 +84,7 @@ class MyApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
       ),
-      
-      // Corregido: Se agregó 'const' para evitar avisos de performance (image_3ca6a1.png)
+      // Mantenemos la pantalla de Login como inicio
       home: const LoginPage(), 
     );
   }
