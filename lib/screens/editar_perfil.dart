@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:ucad_parki/providers/config_provider.dart';
 import 'package:ucad_parki/utils/app_colors.dart';
 
 class EditarPerfil extends StatefulWidget {
@@ -15,7 +17,7 @@ class _EditarPerfilState extends State<EditarPerfil> {
   final apellidoCtrl = TextEditingController();
   final passCtrl = TextEditingController();
   bool cargando = false;
-  bool cambiarPass = false; // Controla si se muestra el campo de contraseña
+  bool cambiarPass = false;
 
   @override
   void initState() {
@@ -35,9 +37,7 @@ class _EditarPerfilState extends State<EditarPerfil> {
 
   Future<void> _guardarCambios() async {
     if (nombreCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("El nombre no puede estar vacío")),
-      );
+      _mostrarMensaje("El nombre no puede estar vacío");
       return;
     }
 
@@ -54,26 +54,35 @@ class _EditarPerfilState extends State<EditarPerfil> {
       );
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Perfil actualizado correctamente")),
-      );
+      _mostrarMensaje("Perfil actualizado correctamente");
       Navigator.pop(context, true);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Error al actualizar"), backgroundColor: Colors.red),
-      );
+      _mostrarMensaje("Error al actualizar", esError: true);
     } finally {
       if (mounted) setState(() => cargando = false);
     }
   }
 
+  void _mostrarMensaje(String msg, {bool esError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: esError ? Colors.red : Colors.black87,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Escuchamos el estado del tema
+    final isDark = Provider.of<ConfigProvider>(context).isDarkMode;
+    final theme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: Colors.white, // Fondo limpio
+      backgroundColor: isDark ? theme.surface : Colors.white,
       appBar: AppBar(
         title: const Text("Editar Perfil", style: TextStyle(color: Colors.white, fontSize: 18)),
-        backgroundColor: AppColors.azul,
+        backgroundColor: isDark ? const Color(0xFF1A1A1A) : AppColors.azul,
         elevation: 0,
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.white),
@@ -83,35 +92,40 @@ class _EditarPerfilState extends State<EditarPerfil> {
         child: Column(
           children: [
             const SizedBox(height: 10),
-            // CAMPO NOMBRE
             _buildInput(
               label: "Nombre",
               icon: Icons.person_outline,
               controller: nombreCtrl,
+              isDark: isDark,
             ),
             const SizedBox(height: 20),
-            // CAMPO APELLIDOS
             _buildInput(
               label: "Apellidos",
               icon: Icons.badge_outlined,
               controller: apellidoCtrl,
+              isDark: isDark,
             ),
             const SizedBox(height: 20),
-            // CAMPO CORREO (Solo lectura para estética)
             _buildInput(
               label: "Correo",
               icon: Icons.email_outlined,
               controller: TextEditingController(text: supabase.auth.currentUser?.email),
               enabled: false,
+              isDark: isDark,
             ),
             const SizedBox(height: 25),
             
-            // SWITCH CAMBIAR CONTRASEÑA
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text("Cambiar contraseña", 
-                  style: TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.w500)),
+                Text(
+                  "Cambiar contraseña", 
+                  style: TextStyle(
+                    fontSize: 16, 
+                    color: isDark ? Colors.white : Colors.black87, 
+                    fontWeight: FontWeight.w500
+                  )
+                ),
                 Switch(
                   value: cambiarPass,
                   onChanged: (v) => setState(() => cambiarPass = v),
@@ -127,14 +141,14 @@ class _EditarPerfilState extends State<EditarPerfil> {
                 icon: Icons.lock_outline,
                 controller: passCtrl,
                 isPassword: true,
+                isDark: isDark,
               ),
             ],
 
             const SizedBox(height: 40),
 
-            // BOTÓN GUARDAR
             cargando
-                ? const CircularProgressIndicator(color: AppColors.azul)
+                ? const CircularProgressIndicator(color: AppColors.amarillo)
                 : ElevatedButton(
                     onPressed: _guardarCambios,
                     style: ElevatedButton.styleFrom(
@@ -143,7 +157,8 @@ class _EditarPerfilState extends State<EditarPerfil> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                       elevation: 0,
                     ),
-                    child: const Text("Guardar Cambios", 
+                    child: const Text(
+                      "Guardar Cambios", 
                       style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)
                     ),
                   ),
@@ -153,17 +168,17 @@ class _EditarPerfilState extends State<EditarPerfil> {
     );
   }
 
-  // WIDGET AUXILIAR PARA LOS CAMPOS GRISES
   Widget _buildInput({
     required String label, 
     required IconData icon, 
     required TextEditingController controller, 
     bool enabled = true, 
-    bool isPassword = false
+    bool isPassword = false,
+    required bool isDark,
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF6F7FB), // Gris azulado muy claro
+        color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF6F7FB),
         borderRadius: BorderRadius.circular(18),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 15),
@@ -171,12 +186,19 @@ class _EditarPerfilState extends State<EditarPerfil> {
         controller: controller,
         enabled: enabled,
         obscureText: isPassword,
-        style: const TextStyle(fontSize: 15),
+        style: TextStyle(
+          fontSize: 15, 
+          color: isDark ? Colors.white : Colors.black87
+        ),
         decoration: InputDecoration(
-          icon: Icon(icon, color: Colors.black54, size: 22),
+          icon: Icon(
+            icon, 
+            color: isDark ? Colors.white54 : Colors.black54, 
+            size: 22
+          ),
           labelText: label,
-          labelStyle: const TextStyle(color: Colors.black45),
-          border: InputBorder.none, // Quitamos la línea de abajo
+          labelStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black45),
+          border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(vertical: 15),
         ),
       ),

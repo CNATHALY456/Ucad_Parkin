@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:provider/provider.dart';
+import 'package:ucad_parki/providers/config_provider.dart';
 import 'package:ucad_parki/utils/app_colors.dart';
 import 'package:ucad_parki/widgets/input_ucad.dart';
 import 'package:ucad_parki/widgets/boton_ucad.dart';
@@ -15,7 +17,6 @@ class RegistroPage extends StatefulWidget {
 class _RegistroPageState extends State<RegistroPage> {
   final supabase = Supabase.instance.client;
 
-  // Controladores de texto
   final correoCtrl = TextEditingController();
   final passCtrl = TextEditingController();
   final nombreCtrl = TextEditingController();
@@ -59,7 +60,6 @@ class _RegistroPageState extends State<RegistroPage> {
   }
 
   Future<void> registrar() async {
-    // 1. Validaciones de campos
     if (nombreCtrl.text.trim().isEmpty || apellidoCtrl.text.trim().isEmpty) {
       mostrar("Por favor, ingresa tu nombre completo");
       return;
@@ -83,14 +83,12 @@ class _RegistroPageState extends State<RegistroPage> {
     setState(() => cargando = true);
 
     try {
-      // 2. Registro en Supabase Auth incluyendo METADATOS
-      // Esto es lo que permite que el Login funcione sin consultar tablas adicionales
       await supabase.auth.signUp(
-         email: correoCtrl.text.trim(),
-         password: passCtrl.text.trim(),
-         data: {
+        email: correoCtrl.text.trim(),
+        password: passCtrl.text.trim(),
+        data: {
           'nombres': nombreCtrl.text.trim(),
-          'tipo_usuario': tipoUsuario, // Esta variable debe ser "Vigilante" o "Empleado"
+          'tipo_usuario': tipoUsuario,
         },
       );
 
@@ -116,12 +114,16 @@ class _RegistroPageState extends State<RegistroPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Provider.of<ConfigProvider>(context).isDarkMode;
+    final theme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: AppColors.azul,
+      // Fondo adaptativo
+      backgroundColor: isDark ? theme.surface : AppColors.azul,
       appBar: AppBar(
         title: const Text("Crear Cuenta",
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: AppColors.azul,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
@@ -145,65 +147,42 @@ class _RegistroPageState extends State<RegistroPage> {
                 isPassword: true,
                 controller: passCtrl),
             const SizedBox(height: 20),
+            
             const LabelUcad(texto: "Tipo de usuario"),
-            DropdownButtonFormField<String>(
+            _buildDropdown(
               value: tipoUsuario,
-              dropdownColor: Colors.white,
-              items: ["Estudiante", "Docente", "Empleado", "Vigilante"]
-                  .map((e) => DropdownMenuItem(
-                      value: e,
-                      child:
-                          Text(e, style: const TextStyle(color: Colors.black))))
-                  .toList(),
+              items: ["Estudiante", "Docente", "Empleado", "Vigilante"],
               onChanged: (v) => setState(() {
                 tipoUsuario = v!;
                 facultad = null;
                 carrera = null;
               }),
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                border:
-                    OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              ),
+              isDark: isDark,
             ),
+            
             const SizedBox(height: 20),
+            
             if (tipoUsuario == "Estudiante") ...[
               const LabelUcad(texto: "Facultad"),
-              DropdownButtonFormField<String>(
+              _buildDropdown(
                 value: facultad,
-                hint: const Text("Selecciona tu Facultad"),
-                items: carrerasPorFacultad.keys
-                    .map((f) => DropdownMenuItem(value: f, child: Text(f)))
-                    .toList(),
+                hint: "Selecciona tu Facultad",
+                items: carrerasPorFacultad.keys.toList(),
                 onChanged: (v) => setState(() {
                   facultad = v;
                   carrera = null;
                 }),
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                ),
+                isDark: isDark,
               ),
               const SizedBox(height: 15),
               if (facultad != null) ...[
                 const LabelUcad(texto: "Carrera"),
-                DropdownButtonFormField<String>(
+                _buildDropdown(
                   value: carrera,
-                  hint: const Text("Selecciona tu Carrera"),
-                  items: carrerasPorFacultad[facultad]!
-                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                      .toList(),
+                  hint: "Selecciona tu Carrera",
+                  items: carrerasPorFacultad[facultad]!,
                   onChanged: (v) => setState(() => carrera = v),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
+                  isDark: isDark,
                 ),
                 const SizedBox(height: 15),
               ],
@@ -224,6 +203,33 @@ class _RegistroPageState extends State<RegistroPage> {
                   ),
             const SizedBox(height: 20),
           ],
+        ),
+      ),
+    );
+  }
+
+  // Método auxiliar para construir Dropdowns consistentes
+  Widget _buildDropdown({
+    required String? value,
+    String? hint,
+    required List<String> items,
+    required void Function(String?) onChanged,
+    required bool isDark,
+  }) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      hint: hint != null ? Text(hint, style: TextStyle(color: isDark ? Colors.white60 : Colors.grey)) : null,
+      dropdownColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+      style: TextStyle(color: isDark ? Colors.white : Colors.black),
+      items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide.none,
         ),
       ),
     );

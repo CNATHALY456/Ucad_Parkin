@@ -20,57 +20,76 @@ class BotonHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Detectamos el brillo actual del sistema o del provider
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       child: Material(
         borderRadius: BorderRadius.circular(20),
-        elevation: 6,
+        // Elevación original de 6 para el modo claro, reducida para el oscuro
+        elevation: isDark ? 2 : 6, 
+        color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
           onTap: onTap,
           child: Container(
             padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A237E),
+              // Mantenemos el color que viene del Home (Gris en Dark, Azul en Light)
+              color: azul, 
               borderRadius: BorderRadius.circular(20),
+              // Solo añadimos borde sutil si es Dark
+              border: isDark ? Border.all(color: Colors.white10) : null,
             ),
             child: Row(
               children: [
-                // ICONO
+                // CONTENEDOR DEL ICONO
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    // MODO CLARO: Mantiene el blanco sólido original
+                    // MODO OSCURO: Usa transparencia para coherencia
+                    color: isDark ? Colors.white.withOpacity(0.1) : Colors.white,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(icono, color: azul),
+                  child: Icon(
+                    icono, 
+                    // MODO CLARO: Usa el azul original
+                    // MODO OSCURO: Usa el amarillo para resaltar
+                    color: isDark ? amarillo : azul,
+                  ),
                 ),
 
                 const SizedBox(width: 15),
 
                 // TEXTO
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      titulo,
-                      style: TextStyle(
-                        color: amarillo,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        titulo,
+                        style: TextStyle(
+                          // MODO CLARO: Amarillo original
+                          // MODO OSCURO: Blanco para legibilidad
+                          color: isDark ? Colors.white : amarillo,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
                       ),
-                    ),
-                    Text(
-                      subtitulo,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
+                      Text(
+                        subtitulo,
+                        style: TextStyle(
+                          // MODO CLARO: Blanco70 original
+                          // MODO OSCURO: Un blanco más tenue
+                          color: isDark ? Colors.white60 : Colors.white70,
+                          fontSize: 14,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-
-                const Spacer(),
 
                 Icon(Icons.arrow_forward_ios, color: amarillo, size: 18),
               ],

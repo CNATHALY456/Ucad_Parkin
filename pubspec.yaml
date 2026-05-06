@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   # Estas deben ir alineadas con 'flutter', no dentro de 'sdk'
-  provider: ^6.1.1
+  provider: ^6.1.5+1
   shared_preferences: ^2.2.2
   supabase_flutter: ^2.12.2
   image_picker: ^1.0.7
@@ -26,6 +26,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/parky.png
+    - assets/parky2.jpeg
     - assets/avatar1.png
     - assets/avatar2.png
     - assets/avatar3.png

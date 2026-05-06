@@ -21,11 +21,20 @@ class ItemPerfil extends StatelessWidget {
       title: Text(
         texto,
         style: TextStyle(
-          color: color == Colors.red ? Colors.red : Colors.black,
-          fontWeight: color == Colors.red ? FontWeight.bold : FontWeight.normal,
+          // CORRECCIÓN: Usamos directamente la variable 'color' 
+          // para que sea blanco en Dark Mode y azul/negro en Light Mode.
+          color: color, 
+          fontWeight: color == Colors.redAccent || color == Colors.red 
+              ? FontWeight.bold 
+              : FontWeight.normal,
         ),
       ),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 15),
+      trailing: Icon(
+        Icons.arrow_forward_ios, 
+        size: 15, 
+        // También le damos color a la flecha para que no se pierda
+        color: color.withOpacity(0.5), 
+      ),
       onTap: onTap,
     );
   }

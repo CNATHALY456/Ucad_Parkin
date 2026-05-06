@@ -2,18 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:ucad_parki/screens/login.dart';
-import 'package:ucad_parki/screens/actualizar_password.dart'; // Importante importar la nueva pantalla
+import 'package:ucad_parki/screens/actualizar_password.dart';
 import 'package:ucad_parki/providers/config_provider.dart'; 
 import 'package:ucad_parki/utils/app_colors.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Inicialización de Supabase
   await Supabase.initialize(
     url: 'https://gxepethewxyqqqpgvqhb.supabase.co',
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd4ZXBldGhld3h5cXFxcGd2cWhiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNzIyNTgsImV4cCI6MjA5MTg0ODI1OH0.5dTq985f0klHI0JcetEskC-_Zr453ylBuONhnwh-sT8',
-    // Permite que Supabase maneje los enlaces externos automáticamente
     authOptions: const FlutterAuthClientOptions(authFlowType: AuthFlowType.pkce),
   );
 
@@ -33,7 +31,7 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  final _navigatorKey = GlobalKey<NavigatorState>(); // Llave global para navegar sin contexto directo
+  final _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
@@ -42,12 +40,8 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _configurarEscuchaAutenticacion() {
-    // Este listener detecta cuando el usuario viene de un enlace de recuperación (image_200687.png)
     Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-      final AuthChangeEvent event = data.event;
-      
-      if (event == AuthChangeEvent.passwordRecovery) {
-        // Redirige a la pantalla de actualización usando la llave global
+      if (data.event == AuthChangeEvent.passwordRecovery) {
         _navigatorKey.currentState?.push(
           MaterialPageRoute(builder: (context) => const ActualizarPasswordPage()),
         );
@@ -57,34 +51,75 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
+    // Escuchamos solo lo necesario para reconstruir el MaterialApp
     final config = Provider.of<ConfigProvider>(context);
 
     return MaterialApp(
-      navigatorKey: _navigatorKey, // Se asigna la llave aquí
+      navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
       title: 'UCAD Parking',
       locale: config.locale,
+      
+      // Control de modo de tema
       themeMode: config.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+      
+      // TEMA CLARO 
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.light,
-        primaryColor: AppColors.azul,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.azul,
-          brightness: Brightness.light,
+        colorScheme: ColorScheme.light(
+          primary: AppColors.azul,
+          onPrimary: Colors.white,
+          surface: Colors.white,
+          onSurface: AppColors.azul,
         ),
         scaffoldBackgroundColor: Colors.white,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: AppColors.azul,
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+        textTheme: const TextTheme(
+          bodyLarge: TextStyle(color: Colors.black),
+          bodyMedium: TextStyle(color: Colors.black87),
+        ),
       ),
+      
+      // TEMA OSCURO CORREGIDO
       darkTheme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
-        primaryColor: AppColors.azul,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.azul,
-          brightness: Brightness.dark,
+        colorScheme: const ColorScheme.dark(
+          primary: AppColors.azul,
+          onPrimary: Colors.white,
+          surface: Color(0xFF1E1E1E), // Tarjetas gris oscuro
+          onSurface: Colors.white,    // Texto sobre tarjetas
+          background: Color(0xFF121212), // Fondo general
+        ),
+        scaffoldBackgroundColor: const Color(0xFF121212),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF1E1E1E),
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+        // Esto fuerza a que los textos sean visibles
+        textTheme: const TextTheme(
+          bodyLarge: TextStyle(color: Colors.white),
+          bodyMedium: TextStyle(color: Colors.white70),
+          titleLarge: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        // Corrección para inputs en modo oscuro
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFF2C2C2C),
+          hintStyle: const TextStyle(color: Colors.white54),
+          prefixIconColor: Colors.white70,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
         ),
       ),
-      // Mantenemos la pantalla de Login como inicio
       home: const LoginPage(), 
     );
   }

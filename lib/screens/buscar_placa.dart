@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:ucad_parki/providers/config_provider.dart';
 import 'package:ucad_parki/utils/app_colors.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart'; // Agregar esta dependencia en pubspec.yaml
+import 'package:url_launcher/url_launcher.dart';
 
 class BuscarPlaca extends StatefulWidget {
+  const BuscarPlaca({super.key});
+
   @override
   _BuscarPlacaState createState() => _BuscarPlacaState();
 }
@@ -22,23 +26,23 @@ class _BuscarPlacaState extends State<BuscarPlaca> {
     cargarDatos();
   }
 
-  //CONSULTA CON JOIN: Traemos datos del ticket y el nombre del usuario
   void cargarDatos() async {
     try {
-      // Usamos 'usuarios(nombres)' para traer el nombre asociado vía la FK id_usuario
       final data = await supabase
           .from('tickets')
           .select('*, usuarios(nombres, telefono)') 
           .order('fecha_hora_entrada', ascending: false);
 
-      setState(() {
-        lista = List<Map<String, dynamic>>.from(data);
-        filtrados = lista;
-        cargando = false;
-      });
+      if (mounted) {
+        setState(() {
+          lista = List<Map<String, dynamic>>.from(data);
+          filtrados = lista;
+          cargando = false;
+        });
+      }
     } catch (e) {
-      print("Error en Join: $e");
-      setState(() => cargando = false);
+      debugPrint("Error en Join: $e");
+      if (mounted) setState(() => cargando = false);
     }
   }
 
@@ -52,23 +56,32 @@ class _BuscarPlacaState extends State<BuscarPlaca> {
     });
   }
 
-  //FUNCIÓN PARA LLAMAR O CONTACTAR
   void contactarUsuario(String? telefono) async {
     if (telefono == null || telefono.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("No hay teléfono registrado para este usuario")),
+        const SnackBar(content: Text("No hay teléfono registrado")),
       );
       return;
     }
     final Uri launchUri = Uri(scheme: 'tel', path: telefono);
-    await launchUrl(launchUri);
+    if (await canLaunchUrl(launchUri)) {
+      await launchUrl(launchUri);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Provider.of<ConfigProvider>(context).isDarkMode;
+    final theme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: AppColors.azul,
-      appBar: AppBar(title: Text("Historial UCAD"), backgroundColor: AppColors.azul, elevation: 0),
+      backgroundColor: isDark ? const Color(0xFF1A1A1A) : AppColors.azul,
+      appBar: AppBar(
+        title: const Text("Historial UCAD", style: TextStyle(color: Colors.white)),
+        backgroundColor: isDark ? const Color(0xFF1A1A1A) : AppColors.azul,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -77,20 +90,27 @@ class _BuscarPlacaState extends State<BuscarPlaca> {
               child: TextField(
                 controller: buscador,
                 onChanged: filtrar,
+                style: TextStyle(color: isDark ? Colors.white : Colors.black),
                 decoration: InputDecoration(
                   hintText: "Buscar placa o nombre...",
-                  prefixIcon: Icon(Icons.search, color: AppColors.azul),
-                  filled: true, fillColor: Colors.white,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+                  hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey),
+                  prefixIcon: Icon(Icons.search, color: isDark ? AppColors.amarillo : AppColors.azul),
+                  filled: true, 
+                  fillColor: isDark ? theme.surface : Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(15), 
+                    borderSide: BorderSide.none
+                  ),
                 ),
               ),
             ),
             Expanded(
               child: cargando
-                  ? Center(child: CircularProgressIndicator(color: Colors.white))
+                  ? const Center(child: CircularProgressIndicator(color: AppColors.amarillo))
                   : ListView.builder(
                       itemCount: filtrados.length,
-                      itemBuilder: (context, index) => tarjetaExpandible(filtrados[index]),
+                      padding: const EdgeInsets.only(bottom: 20),
+                      itemBuilder: (context, index) => tarjetaExpandible(filtrados[index], isDark, theme),
                     ),
             ),
           ],
@@ -99,30 +119,35 @@ class _BuscarPlacaState extends State<BuscarPlaca> {
     );
   }
 
-  Widget tarjetaExpandible(Map<String, dynamic> v) {
+  Widget tarjetaExpandible(Map<String, dynamic> v, bool isDark, ColorScheme theme) {
     bool esActivo = v['estado_ticket'] == 'activo';
     String nombreUsuario = v['usuarios']?['nombres'] ?? "Usuario General";
     String telefono = v['usuarios']?['telefono'] ?? "";
 
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 15, vertical: 6),
+      margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? theme.surface : Colors.white,
         borderRadius: BorderRadius.circular(20),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: ExpansionTile(
-          backgroundColor: Colors.white,
-          collapsedBackgroundColor: Colors.white,
+          iconColor: isDark ? AppColors.amarillo : AppColors.azul,
+          collapsedIconColor: isDark ? Colors.white54 : Colors.grey,
+          backgroundColor: Colors.transparent,
+          collapsedBackgroundColor: Colors.transparent,
           leading: Icon(
             (v['metodo_ingreso'] == 'QR') ? Icons.qr_code : Icons.directions_car,
-            color: AppColors.azul,
+            color: isDark ? AppColors.amarillo : AppColors.azul,
             size: 30,
           ),
           title: Text(
             v['observaciones'] ?? "SIN PLACA",
-            style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.azul),
+            style: TextStyle(
+              fontWeight: FontWeight.bold, 
+              color: isDark ? Colors.white : AppColors.azul
+            ),
           ),
           subtitle: Text(
             esActivo ? "• En parqueo" : "• Finalizado",
@@ -134,44 +159,75 @@ class _BuscarPlacaState extends State<BuscarPlaca> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Divider(),
+                  Divider(color: isDark ? Colors.white10 : Colors.grey[300]),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("DUEÑO REGISTRADO:", style: TextStyle(fontSize: 10, color: Colors.grey)),
-                          Text(nombreUsuario, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        ],
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "DUEÑO REGISTRADO:", 
+                              style: TextStyle(fontSize: 10, color: isDark ? Colors.white38 : Colors.grey)
+                            ),
+                            Text(
+                              nombreUsuario, 
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold, 
+                                fontSize: 16,
+                                color: isDark ? Colors.white : Colors.black87
+                              )
+                            ),
+                          ],
+                        ),
                       ),
                       IconButton(
                         onPressed: () => contactarUsuario(telefono),
-                        icon: Icon(Icons.phone, color: Colors.green),
-                        style: IconButton.styleFrom(backgroundColor: Colors.green.withOpacity(0.1)),
+                        icon: const Icon(Icons.phone, color: Colors.green),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.green.withOpacity(0.1)
+                        ),
                       )
                     ],
                   ),
-                  SizedBox(height: 10),
-                  Text("DETALLES DEL TICKET", style: TextStyle(fontSize: 10, color: Colors.grey)),
-                  Text("ID Ticket: #${v['id_ticket']}"),
-                  Text("Entrada: ${v['fecha_hora_entrada']}"),
-                  if (!esActivo) Text("Salida: ${v['fecha_hora_salida']}"),
-                  SizedBox(height: 10),
-                  // BOTÓN DE ACCIÓN RÁPIDA
+                  const SizedBox(height: 10),
+                  _datoDetalle("ID Ticket", "#${v['id_ticket']}", isDark),
+                  _datoDetalle("Entrada", "${v['fecha_hora_entrada']}", isDark),
+                  if (!esActivo) _datoDetalle("Salida", "${v['fecha_hora_salida']}", isDark),
+                  
+                  const SizedBox(height: 15),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      onPressed: () {
-                        // Aquí podrías navegar a la pantalla de pago o recibo
-                      },
-                      icon: Icon(Icons.receipt_long),
-                      label: Text("Ver Recibo Completo"),
+                      onPressed: () {},
+                      icon: const Icon(Icons.receipt_long),
+                      label: const Text("Ver Recibo Completo"),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: isDark ? AppColors.amarillo : AppColors.azul,
+                        side: BorderSide(color: isDark ? AppColors.amarillo : AppColors.azul),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
                     ),
                   )
                 ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _datoDetalle(String titulo, String valor, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: RichText(
+        text: TextSpan(
+          style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 13),
+          children: [
+            TextSpan(text: "$titulo: ", style: const TextStyle(fontWeight: FontWeight.bold)),
+            TextSpan(text: valor),
           ],
         ),
       ),
