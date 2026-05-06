@@ -56,17 +56,40 @@ class _BuscarPlacaState extends State<BuscarPlaca> {
     });
   }
 
+  // --- FUNCIÓN PARA LLAMADA ---
   void contactarUsuario(String? telefono) async {
     if (telefono == null || telefono.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("No hay teléfono registrado")),
-      );
+      _errorMensaje("No hay teléfono registrado");
       return;
     }
     final Uri launchUri = Uri(scheme: 'tel', path: telefono);
     if (await canLaunchUrl(launchUri)) {
       await launchUrl(launchUri);
     }
+  }
+
+  // --- FUNCIÓN PARA WHATSAPP ---
+  void enviarWhatsapp(String? telefono) async {
+    if (telefono == null || telefono.isEmpty) {
+      _errorMensaje("No hay teléfono registrado");
+      return;
+    }
+
+    // Limpia el número y asegura el código 503
+    final soloNumeros = telefono.replaceAll(RegExp(r'[^0-9]'), '');
+    final numeroFinal = soloNumeros.startsWith('503') ? soloNumeros : '503$soloNumeros';
+
+    final Uri whatsappUri = Uri.parse("https://wa.me/$numeroFinal?text=Hola, te saludo de la caseta de vigilancia de UCAD.");
+
+    if (await canLaunchUrl(whatsappUri)) {
+      await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
+    } else {
+      _errorMensaje("No se pudo abrir WhatsApp");
+    }
+  }
+
+  void _errorMensaje(String m) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
 
   @override
@@ -135,8 +158,6 @@ class _BuscarPlacaState extends State<BuscarPlaca> {
         child: ExpansionTile(
           iconColor: isDark ? AppColors.amarillo : AppColors.azul,
           collapsedIconColor: isDark ? Colors.white54 : Colors.grey,
-          backgroundColor: Colors.transparent,
-          collapsedBackgroundColor: Colors.transparent,
           leading: Icon(
             (v['metodo_ingreso'] == 'QR') ? Icons.qr_code : Icons.directions_car,
             color: isDark ? AppColors.amarillo : AppColors.azul,
@@ -182,12 +203,21 @@ class _BuscarPlacaState extends State<BuscarPlaca> {
                           ],
                         ),
                       ),
-                      IconButton(
-                        onPressed: () => contactarUsuario(telefono),
-                        icon: const Icon(Icons.phone, color: Colors.green),
-                        style: IconButton.styleFrom(
-                          backgroundColor: Colors.green.withOpacity(0.1)
-                        ),
+                      // --- BOTONES DE CONTACTO ---
+                      Row(
+                        children: [
+                          IconButton(
+                            onPressed: () => enviarWhatsapp(telefono),
+                            icon: const Icon(Icons.chat, color: Colors.green),
+                            style: IconButton.styleFrom(backgroundColor: Colors.green.withOpacity(0.1)),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            onPressed: () => contactarUsuario(telefono),
+                            icon: const Icon(Icons.phone, color: Colors.blue),
+                            style: IconButton.styleFrom(backgroundColor: Colors.blue.withOpacity(0.1)),
+                          ),
+                        ],
                       )
                     ],
                   ),

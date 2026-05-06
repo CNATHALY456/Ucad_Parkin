@@ -1,23 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ucad_parki/providers/config_provider.dart';
 import 'package:ucad_parki/utils/app_colors.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class EditarPerfil extends StatefulWidget {
   const EditarPerfil({super.key});
 
   @override
-  State<EditarPerfil> createState() => _EditarPerfilState();
+  _EditarPerfilState createState() => _EditarPerfilState();
 }
 
 class _EditarPerfilState extends State<EditarPerfil> {
   final supabase = Supabase.instance.client;
-  final nombreCtrl = TextEditingController();
-  final apellidoCtrl = TextEditingController();
-  final passCtrl = TextEditingController();
-  bool cargando = false;
-  bool cambiarPass = false;
+  final _formKey = GlobalKey<FormState>();
+
+  TextEditingController nombreController = TextEditingController();
+  TextEditingController apellidosController = TextEditingController();
+  TextEditingController correoController = TextEditingController();
+
+  bool cargandoDatos = true;
+  bool guardando = false;
+
+  final List<String> listaAvatares = [
+    'assets/avatar1.png',
+    'assets/avatar2.png',
+    'assets/avatar3.png',
+    'assets/avatar4.png',
+  ];
+
+  String avatarSeleccionado = 'assets/avatar1.png';
 
   @override
   void initState() {
@@ -25,183 +37,171 @@ class _EditarPerfilState extends State<EditarPerfil> {
     _cargarDatosDesdeAuth();
   }
 
+  // Cargamos los datos directamente del objeto User de Auth
   void _cargarDatosDesdeAuth() {
     final user = supabase.auth.currentUser;
     if (user != null) {
       setState(() {
-        nombreCtrl.text = user.userMetadata?['nombres'] ?? "";
-        apellidoCtrl.text = user.userMetadata?['apellidos'] ?? "";
+        correoController.text = user.email ?? '';
+        
+        // Extraemos los metadatos (raw_user_meta_data)
+        final metadata = user.userMetadata;
+        if (metadata != null) {
+          nombreController.text = metadata['nombres'] ?? '';
+          apellidosController.text = metadata['apellidos'] ?? '';
+          avatarSeleccionado = metadata['avatar_path'] ?? 'assets/avatar1.png';
+        }
+        cargandoDatos = false;
       });
     }
   }
 
   Future<void> _guardarCambios() async {
-    if (nombreCtrl.text.trim().isEmpty) {
-      _mostrarMensaje("El nombre no puede estar vacío");
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => guardando = true);
 
-    setState(() => cargando = true);
     try {
+      // Actualizamos los metadatos del usuario en la tabla AUTH
       await supabase.auth.updateUser(
         UserAttributes(
-          password: (cambiarPass && passCtrl.text.isNotEmpty) ? passCtrl.text.trim() : null,
+          email: correoController.text.trim(),
           data: {
-            'nombres': nombreCtrl.text.trim(),
-            'apellidos': apellidoCtrl.text.trim(),
+            'nombres': nombreController.text.trim(),
+            'apellidos': apellidosController.text.trim(),
+            'avatar_path': avatarSeleccionado,
           },
         ),
       );
 
-      if (!mounted) return;
-      _mostrarMensaje("Perfil actualizado correctamente");
-      Navigator.pop(context, true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("¡Perfil actualizado en Auth!")),
+        );
+        Navigator.pop(context);
+      }
     } catch (e) {
-      _mostrarMensaje("Error al actualizar", esError: true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error al actualizar Auth: $e")),
+      );
     } finally {
-      if (mounted) setState(() => cargando = false);
+      if (mounted) setState(() => guardando = false);
     }
-  }
-
-  void _mostrarMensaje(String msg, {bool esError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: esError ? Colors.red : Colors.black87,
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Escuchamos el estado del tema
     final isDark = Provider.of<ConfigProvider>(context).isDarkMode;
     final theme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: isDark ? theme.surface : Colors.white,
+      backgroundColor: isDark ? const Color(0xFF121212) : AppColors.azul,
       appBar: AppBar(
-        title: const Text("Editar Perfil", style: TextStyle(color: Colors.white, fontSize: 18)),
-        backgroundColor: isDark ? const Color(0xFF1A1A1A) : AppColors.azul,
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(25.0),
-        child: Column(
-          children: [
-            const SizedBox(height: 10),
-            _buildInput(
-              label: "Nombre",
-              icon: Icons.person_outline,
-              controller: nombreCtrl,
-              isDark: isDark,
-            ),
-            const SizedBox(height: 20),
-            _buildInput(
-              label: "Apellidos",
-              icon: Icons.badge_outlined,
-              controller: apellidoCtrl,
-              isDark: isDark,
-            ),
-            const SizedBox(height: 20),
-            _buildInput(
-              label: "Correo",
-              icon: Icons.email_outlined,
-              controller: TextEditingController(text: supabase.auth.currentUser?.email),
-              enabled: false,
-              isDark: isDark,
-            ),
-            const SizedBox(height: 25),
-            
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  "Cambiar contraseña", 
-                  style: TextStyle(
-                    fontSize: 16, 
-                    color: isDark ? Colors.white : Colors.black87, 
-                    fontWeight: FontWeight.w500
-                  )
+      body: cargandoDatos
+          ? const Center(child: CircularProgressIndicator(color: AppColors.amarillo))
+          : SingleChildScrollView(
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                        child: CircleAvatar(
+                          radius: 70,
+                          backgroundImage: AssetImage(avatarSeleccionado),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 25),
+                    
+                    // Selección de Avatares
+                    SizedBox(
+                      height: 90,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        itemCount: listaAvatares.length,
+                        itemBuilder: (context, index) {
+                          bool seleccionado = avatarSeleccionado == listaAvatares[index];
+                          return GestureDetector(
+                            onTap: () => setState(() => avatarSeleccionado = listaAvatares[index]),
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 8),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: seleccionado ? AppColors.amarillo : Colors.transparent,
+                                  width: 3,
+                                ),
+                              ),
+                              child: CircleAvatar(
+                                radius: 35,
+                                backgroundColor: Colors.white,
+                                backgroundImage: AssetImage(listaAvatares[index]),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+
+                    Container(
+                      padding: const EdgeInsets.all(30),
+                      decoration: BoxDecoration(
+                        color: theme.surface,
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(40)),
+                      ),
+                      child: Column(
+                        children: [
+                          _input(nombreController, "Nombre", Icons.person_outline, isDark),
+                          const SizedBox(height: 20),
+                          _input(apellidosController, "Apellidos", Icons.badge_outlined, isDark),
+                          const SizedBox(height: 20),
+                          _input(correoController, "Correo", Icons.email_outlined, isDark),
+                          const SizedBox(height: 30),
+                          
+                          SizedBox(
+                            width: double.infinity,
+                            height: 55,
+                            child: ElevatedButton(
+                              onPressed: guardando ? null : _guardarCambios,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.amarillo,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                              ),
+                              child: guardando 
+                                ? const CircularProgressIndicator() 
+                                : const Text("Guardar Cambios", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                Switch(
-                  value: cambiarPass,
-                  onChanged: (v) => setState(() => cambiarPass = v),
-                  activeColor: AppColors.amarillo,
-                ),
-              ],
-            ),
-            
-            if (cambiarPass) ...[
-              const SizedBox(height: 15),
-              _buildInput(
-                label: "Nueva Contraseña",
-                icon: Icons.lock_outline,
-                controller: passCtrl,
-                isPassword: true,
-                isDark: isDark,
               ),
-            ],
-
-            const SizedBox(height: 40),
-
-            cargando
-                ? const CircularProgressIndicator(color: AppColors.amarillo)
-                : ElevatedButton(
-                    onPressed: _guardarCambios,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.amarillo,
-                      minimumSize: const Size(double.infinity, 55),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      "Guardar Cambios", 
-                      style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)
-                    ),
-                  ),
-          ],
-        ),
-      ),
+            ),
     );
   }
 
-  Widget _buildInput({
-    required String label, 
-    required IconData icon, 
-    required TextEditingController controller, 
-    bool enabled = true, 
-    bool isPassword = false,
-    required bool isDark,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF6F7FB),
-        borderRadius: BorderRadius.circular(18),
+  Widget _input(TextEditingController cont, String label, IconData icon, bool isDark) {
+    return TextFormField(
+      controller: cont,
+      style: TextStyle(color: isDark ? Colors.white : Colors.black),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: isDark ? AppColors.amarillo : AppColors.azul),
+        filled: true,
+        fillColor: isDark ? Colors.white10 : Colors.grey[100],
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 15),
-      child: TextField(
-        controller: controller,
-        enabled: enabled,
-        obscureText: isPassword,
-        style: TextStyle(
-          fontSize: 15, 
-          color: isDark ? Colors.white : Colors.black87
-        ),
-        decoration: InputDecoration(
-          icon: Icon(
-            icon, 
-            color: isDark ? Colors.white54 : Colors.black54, 
-            size: 22
-          ),
-          labelText: label,
-          labelStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black45),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 15),
-        ),
-      ),
+      validator: (v) => v!.isEmpty ? "Este campo es obligatorio" : null,
     );
   }
 }

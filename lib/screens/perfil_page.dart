@@ -1,7 +1,5 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:ucad_parki/providers/config_provider.dart';
 import 'package:ucad_parki/screens/editar_perfil.dart';
@@ -22,8 +20,9 @@ class _PerfilPageState extends State<PerfilPage> {
   final supabase = Supabase.instance.client;
   String nombreMostrar = "";
   String rolMostrar = "";
-  String? fotoUrl;
-  bool cargando = false;
+  String avatarActual = 'assets/parky.png'; // Avatar por defecto
+  bool cargando = true;
+  bool refrescando = false;
 
   @override
   void initState() {
@@ -31,49 +30,42 @@ class _PerfilPageState extends State<PerfilPage> {
     _cargarDatosDesdeAuth();
   }
 
+  // --- CARGAR DATOS DESDE METADATOS DE AUTH ---
   void _cargarDatosDesdeAuth() {
     final user = supabase.auth.currentUser;
     if (user != null) {
-      setState(() {
-        nombreMostrar = "${user.userMetadata?['nombres'] ?? ''} ${user.userMetadata?['apellidos'] ?? ''}".trim();
-        rolMostrar = user.userMetadata?['tipo_usuario'] ?? "Usuario";
-        fotoUrl = user.userMetadata?['url_avatar'];
-        if (nombreMostrar.isEmpty) nombreMostrar = "Usuario UCAD";
-      });
+      if (mounted) {
+        setState(() {
+          nombreMostrar = "${user.userMetadata?['nombres'] ?? ''} ${user.userMetadata?['apellidos'] ?? ''}".trim();
+          rolMostrar = user.userMetadata?['tipo_usuario'] ?? "Usuario";
+          
+          // Ahora usamos 'avatar_path' de los metadatos en lugar de una URL de storage
+          avatarActual = user.userMetadata?['avatar_path'] ?? 'assets/parky.png';
+          
+          if (nombreMostrar.isEmpty) nombreMostrar = "Usuario UCAD";
+          cargando = false;
+        });
+      }
     }
   }
 
-  Future<void> _cambiarFoto() async {
-    final picker = ImagePicker();
-    final XFile? imagenSeleccionada = await picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
-    
-    if (imagenSeleccionada == null) return;
-    
-    setState(() => cargando = true);
-    
+  // --- FUNCIÓN REFRESH PARA SINCRONIZAR CON EL SERVIDOR ---
+  Future<void> _refreshPerfil() async {
+    setState(() => refrescando = true);
     try {
-      final user = supabase.auth.currentUser;
-      final file = File(imagenSeleccionada.path);
-      final fileExtension = imagenSeleccionada.path.split('.').last;
-      final fileName = '${user!.id}.$fileExtension';
-      final filePath = 'avatars/$fileName';
-
-      await supabase.storage.from('perfiles').upload(
-        filePath, 
-        file, 
-        fileOptions: const FileOptions(upsert: true)
-      );
-      
-      final String publicUrl = supabase.storage.from('perfiles').getPublicUrl(filePath);
-      await supabase.auth.updateUser(UserAttributes(data: {'url_avatar': publicUrl}));
-      
+      // Forzamos la actualización de la sesión para obtener metadatos frescos
+      await supabase.auth.refreshSession();
       _cargarDatosDesdeAuth();
-    } catch (e) {
+      
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Perfil actualizado desde la nube")),
+        );
       }
+    } catch (e) {
+      debugPrint("Error al refrescar: $e");
     } finally {
-      if (mounted) setState(() => cargando = false);
+      if (mounted) setState(() => refrescando = false);
     }
   }
 
@@ -89,126 +81,132 @@ class _PerfilPageState extends State<PerfilPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Detectamos si el modo oscuro está activo mediante el Provider
     final isDark = Provider.of<ConfigProvider>(context).isDarkMode;
-    
-    // Definimos el color que usarán los textos e iconos de las opciones
     final Color colorOpciones = isDark ? Colors.white : AppColors.azul;
 
     return Scaffold(
-      // Fondo adaptativo para la parte superior (detrás de la foto)
       backgroundColor: isDark ? const Color(0xFF121212) : AppColors.azul,
-      body: SafeArea(
-        child: cargando
-            ? const Center(child: CircularProgressIndicator(color: AppColors.amarillo))
-            : Column(
-                children: [
-                  Align(
-                    alignment: Alignment.topLeft,
-                    child: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 10),
-                  
-                  // Foto de Perfil
-                  Stack(
-                    alignment: Alignment.bottomRight,
-                    children: [
-                      Container(
-                        width: 140, 
-                        height: 140,
-                        decoration: BoxDecoration(
-                          color: isDark ? Colors.grey[900] : Colors.white, 
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 3),
-                        ),
-                        child: ClipOval(
-                          child: fotoUrl != null 
-                            ? Image.network(fotoUrl!, fit: BoxFit.cover)
-                            : Image.asset('assets/parky.png', fit: BoxFit.cover),
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: _cambiarFoto,
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: const BoxDecoration(
-                            color: AppColors.amarillo, 
-                            shape: BoxShape.circle
-                          ),
-                          child: const Icon(Icons.camera_alt, color: Colors.black, size: 20),
-                        ),
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 15),
-                  
-                  // Nombre y Rol siempre en blanco para contrastar con el fondo superior oscuro/azul
-                  Text(
-                    nombreMostrar, 
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)
-                  ),
-                  Text(
-                    rolMostrar, 
-                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 15)
-                  ),
-                  
-                  const SizedBox(height: 30),
-                  
-                  // Contenedor de Opciones
-                  Expanded(
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.fromLTRB(20, 35, 20, 20),
-                      decoration: BoxDecoration(
-                        // Color de fondo del panel inferior adaptativo
-                        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(40)),
-                      ),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          children: [
-                            ItemPerfil(
-                              texto: "Mi perfil",
-                              icono: Icons.person_outline,
-                              color: colorOpciones, // Cambia a blanco en dark mode
-                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const EditarPerfil())),
-                            ),
-                            ItemPerfil(
-                              texto: "Configuración",
-                              icono: Icons.settings_outlined,
-                              color: colorOpciones, // Cambia a blanco en dark mode
-                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ConfiguracionPage())),
-                            ),
-                            ItemPerfil(
-                              texto: "Notificaciones",
-                              icono: Icons.notifications_none,
-                              color: colorOpciones, // Cambia a blanco en dark mode
-                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificacionesPage())),
-                            ),
-                            
-                            const Divider(height: 50, thickness: 1),
-                            
-                            ItemPerfil(
-                              texto: "Cerrar sesión",
-                              icono: Icons.logout,
-                              color: Colors.redAccent,
-                              onTap: _cerrarSesion,
-                            ),
-                            const SizedBox(height: 20),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          // BOTÓN REFRESH AGREGADO
+          IconButton(
+            icon: refrescando 
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Icon(Icons.refresh, color: Colors.white),
+            onPressed: refrescando ? null : _refreshPerfil,
+            tooltip: "Actualizar datos",
+          ),
+          const SizedBox(width: 10),
+        ],
       ),
+      body: cargando
+          ? const Center(child: CircularProgressIndicator(color: AppColors.amarillo))
+          : Column(
+              children: [
+                const SizedBox(height: 10),
+                
+                // Foto de Perfil (Solo muestra el avatar seleccionado)
+                Center(
+                  child: Container(
+                    width: 140, 
+                    height: 140,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.grey[900] : Colors.white, 
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 3),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        )
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: Image.asset(
+                        avatarActual, 
+                        fit: BoxFit.cover,
+                        // Error builder por si la ruta en metadatos está rota
+                        errorBuilder: (context, error, stackTrace) => Image.asset('assets/parky.png'),
+                      ),
+                    ),
+                  ),
+                ),
+                
+                const SizedBox(height: 15),
+                
+                Text(
+                  nombreMostrar, 
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)
+                ),
+                Text(
+                  rolMostrar, 
+                  style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 15)
+                ),
+                
+                const SizedBox(height: 30),
+                
+                // Contenedor de Opciones
+                Expanded(
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(20, 35, 20, 20),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(40)),
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          ItemPerfil(
+                            texto: "Mi perfil",
+                            icono: Icons.person_outline,
+                            color: colorOpciones,
+                            onTap: () async {
+                              // Al volver de editar, recargamos la info local
+                              await Navigator.push(
+                                context, 
+                                MaterialPageRoute(builder: (context) => const EditarPerfil())
+                              );
+                              _cargarDatosDesdeAuth();
+                            },
+                          ),
+                          ItemPerfil(
+                            texto: "Configuración",
+                            icono: Icons.settings_outlined,
+                            color: colorOpciones,
+                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ConfiguracionPage())),
+                          ),
+                          ItemPerfil(
+                            texto: "Notificaciones",
+                            icono: Icons.notifications_none,
+                            color: colorOpciones,
+                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificacionesPage())),
+                          ),
+                          
+                          const Divider(height: 50, thickness: 1),
+                          
+                          ItemPerfil(
+                            texto: "Cerrar sesión",
+                            icono: Icons.logout,
+                            color: Colors.redAccent,
+                            onTap: _cerrarSesion,
+                          ),
+                          const SizedBox(height: 20),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }
