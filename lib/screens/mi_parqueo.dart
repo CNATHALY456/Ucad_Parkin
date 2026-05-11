@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ucad_parki/utils/app_colors.dart';
+import 'package:intl/intl.dart';
 
 class MiParqueo extends StatefulWidget {
   const MiParqueo({super.key});
@@ -10,43 +12,61 @@ class MiParqueo extends StatefulWidget {
 }
 
 class _MiParqueoState extends State<MiParqueo> {
-  // 🚗 ESTADO SIMULADO
-  // false = no está usando parqueo
-  // true = vehículo dentro del parqueo
-  bool usandoParqueo = true;
-
-  // ⏱️ TIMER
-  Duration tiempo = Duration.zero;
+  final supabase = Supabase.instance.client;
+  String? miPlaca;
+  dynamic idMiVehiculo; 
   Timer? timer;
-
-  // 📅 HORA ENTRADA
-  final DateTime horaEntrada = DateTime.now().subtract(
-    const Duration(hours: 2, minutes: 35),
-  );
+  Duration tiempoTranscurrido = Duration.zero;
+  bool cargandoPerfil = true;
+  double tarifaPorHora = 0.50;
 
   @override
   void initState() {
     super.initState();
+    _obtenerDatosUsuario();
+  }
 
-    if (usandoParqueo) {
-      iniciarTiempo();
+  Future<void> _obtenerDatosUsuario() async {
+    try {
+      final user = supabase.auth.currentUser;
+      if (user != null) {
+        // 1. Obtenemos la placa y el ID del vehículo vinculado al usuario
+        final perfil = await supabase
+            .from('perfiles')
+            .select('placa_principal')
+            .eq('id', user.id)
+            .single();
+
+        final vehiculo = await supabase
+            .from('vehiculos')
+            .select('id_vehiculo')
+            .eq('id_usuario', user.id)
+            .maybeSingle();
+
+        if (mounted) {
+          setState(() {
+            miPlaca = perfil['placa_principal']?.toString().toUpperCase().trim();
+            idMiVehiculo = vehiculo?['id_vehiculo'];
+            cargandoPerfil = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Error obteniendo perfil: $e");
+      if (mounted) setState(() => cargandoPerfil = false);
     }
   }
 
-  void iniciarTiempo() {
+  void _iniciarReloj(DateTime entrada) {
+    // Si ya hay un timer corriendo, lo cancelamos antes de crear uno nuevo para evitar duplicidad
+    timer?.cancel();
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() {
-        tiempo = DateTime.now().difference(horaEntrada);
-      });
+      if (mounted) {
+        setState(() {
+          tiempoTranscurrido = DateTime.now().difference(entrada);
+        });
+      }
     });
-  }
-
-  String formatearTiempo(Duration d) {
-    String horas = d.inHours.toString().padLeft(2, '0');
-    String minutos = (d.inMinutes % 60).toString().padLeft(2, '0');
-    String segundos = (d.inSeconds % 60).toString().padLeft(2, '0');
-
-    return "$horas:$minutos:$segundos";
   }
 
   @override
@@ -55,247 +75,214 @@ class _MiParqueoState extends State<MiParqueo> {
     super.dispose();
   }
 
-  Widget infoItem(IconData icono, String titulo, String valor) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 15),
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-      padding: const EdgeInsets.all(15),
+    if (cargandoPerfil) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.amarillo));
+    }
 
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(18),
+    if (miPlaca == null || miPlaca!.isEmpty) {
+      return _buildVistaSinPlaca(isDark);
+    }
+
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      // ESCUCHA ACTIVA: Solo tickets que sigan marcados como 'activo'
+      stream: supabase
+          .from('tickets')
+          .stream(primaryKey: ['id_ticket'])
+          .eq('estado_ticket', 'activo')
+          .order('fecha_hora_entrada', ascending: false),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) return const Center(child: Text("Error al conectar con el servidor"));
+        
+        final todosLosTickets = snapshot.data ?? [];
+
+        // Filtramos para encontrar el ticket que pertenece a este usuario
+        Map<String, dynamic> miTicketActivo = {};
+        
+        try {
+          miTicketActivo = todosLosTickets.firstWhere(
+            (t) {
+              final idEnTicket = t['id_vehiculo']?.toString();
+              final miIdString = idMiVehiculo?.toString();
+              final obs = t['observaciones']?.toString().toUpperCase() ?? "";
+              
+              // Coincidencia por ID de vehículo o por Placa en observaciones
+              return (miIdString != null && idEnTicket == miIdString) || 
+                     (obs.contains(miPlaca!));
+            },
+            orElse: () => {},
+          );
+        } catch (e) {
+          miTicketActivo = {};
+        }
+
+        // Si no hay ticket activo (porque se cerró o no ha entrado), limpiamos reloj y mostramos vacío
+        if (miTicketActivo.isEmpty) {
+          timer?.cancel();
+          timer = null;
+          return _buildVistaVacia(isDark);
+        }
+
+        // Si hay ticket, iniciamos o mantenemos el reloj
+        final DateTime entrada = DateTime.parse(miTicketActivo['fecha_hora_entrada']).toLocal();
+        if (timer == null || !timer!.isActive) {
+          _iniciarReloj(entrada);
+        }
+
+        // Cálculo de cobro estimado
+        double horas = tiempoTranscurrido.inSeconds / 3600;
+        if (horas < 0) horas = 0;
+        double montoActual = horas * tarifaPorHora;
+
+        return _buildVistaActiva(isDark, miTicketActivo, montoActual);
+      },
+    );
+  }
+
+  Widget _buildVistaSinPlaca(bool isDark) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(30.0),
+        child: Text(
+          "Registra tu placa en 'Mi Vehículo' para monitorear tu tiempo.",
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 16, color: isDark ? Colors.white70 : Colors.black54),
+        ),
       ),
+    );
+  }
 
-      child: Row(
+  Widget _buildVistaVacia(bool isDark) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-
-            decoration: BoxDecoration(
-              color: AppColors.azul.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-
-            child: Icon(icono, color: AppColors.azul),
-          ),
-
-          const SizedBox(width: 15),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  titulo,
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                ),
-
-                const SizedBox(height: 3),
-
-                Text(
-                  valor,
-                  style: TextStyle(
-                    color: AppColors.azul,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ],
-            ),
+          const Icon(Icons. beach_access_outlined, size: 80, color: AppColors.amarillo),
+          const SizedBox(height: 20),
+          const Text("SIN ACTIVIDAD", 
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.amarillo)),
+          const SizedBox(height: 10),
+          Text("Placa vinculada: $miPlaca", 
+            style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 40, vertical: 10),
+            child: Text("No tienes un ticket de parqueo activo en este momento.", 
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey)),
           ),
         ],
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Colors.white,
-
+  Widget _buildVistaActiva(bool isDark, Map<String, dynamic> ticket, double monto) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 🏠 TÍTULO
-          Text(
-            "Mi Parqueo",
-            style: TextStyle(
-              fontSize: 30,
-              fontWeight: FontWeight.bold,
+          // CABECERA DEL CRONÓMETRO
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+            decoration: BoxDecoration(
               color: AppColors.azul,
+              borderRadius: BorderRadius.circular(30),
+              boxShadow: [if(!isDark) const BoxShadow(color: Colors.black26, blurRadius: 15, offset: Offset(0, 8))]
+            ),
+            child: Column(
+              children: [
+                const Icon(Icons.timer, size: 50, color: AppColors.amarillo),
+                const SizedBox(height: 15),
+                Text(
+                  "${tiempoTranscurrido.inHours.toString().padLeft(2, '0')}:${(tiempoTranscurrido.inMinutes % 60).toString().padLeft(2, '0')}:${(tiempoTranscurrido.inSeconds % 60).toString().padLeft(2, '0')}",
+                  style: const TextStyle(
+                    color: AppColors.amarillo, 
+                    fontSize: 55, 
+                    fontWeight: FontWeight.bold, 
+                    fontFamily: 'monospace'
+                  ),
+                ),
+                const Text("TIEMPO EN PARQUEO", 
+                  style: TextStyle(color: Colors.white70, letterSpacing: 1.5, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 25),
+          
+          // TARJETA DE COSTO
+          Card(
+            elevation: 0,
+            color: isDark ? Colors.white10 : Colors.grey.shade100,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              leading: const CircleAvatar(
+                backgroundColor: Colors.green,
+                child: Icon(Icons.attach_money, color: Colors.white),
+              ),
+              title: const Text("Cobro Estimado", style: TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Text("Tarifa: \$${tarifaPorHora.toStringAsFixed(2)} / hora"),
+              trailing: Text(
+                "\$${monto.toStringAsFixed(2)}",
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.green),
+              ),
             ),
           ),
 
-          const SizedBox(height: 25),
+          const SizedBox(height: 20),
+          
+          // DETALLES ADICIONALES
+          _buildInfoRow(Icons.login, "Entrada", DateFormat('hh:mm a').format(DateTime.parse(ticket['fecha_hora_entrada']).toLocal())),
+          _rowSimple("Fecha:", DateFormat('dd/MM/yyyy').format(DateTime.parse(ticket['fecha_hora_entrada']).toLocal()), isDark),
+          _rowSimple("Placa Detectada:", miPlaca ?? "N/A", isDark),
+          
+          const Divider(height: 40),
+          
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.info_outline, size: 14, color: Colors.grey),
+              SizedBox(width: 5),
+              Text("El tiempo se detendrá cuando el vigilante registre tu salida.", 
+                style: TextStyle(color: Colors.grey, fontSize: 11)),
+            ],
+          )
+        ],
+      ),
+    );
+  }
 
-          // 🚫 NO ESTÁ EN PARQUEO
-          if (!usandoParqueo)
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    "NO ESTÁS USANDO EL PARQUEO",
-                    textAlign: TextAlign.center,
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: AppColors.amarillo.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(15)
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.amarillo),
+          const SizedBox(width: 15),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
+          const Spacer(),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        ],
+      ),
+    );
+  }
 
-                    style: TextStyle(
-                      color: AppColors.amarillo,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 35),
-
-                  Center(
-                    child: Image.asset(
-                      "assets/parky_parqueo_vacio.png",
-                      height: 260,
-                    ),
-                  ),
-
-                  const SizedBox(height: 25),
-
-                  Text(
-                    "Tu vehículo aún no ha sido registrado",
-                    textAlign: TextAlign.center,
-
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 17),
-                  ),
-                ],
-              ),
-            ),
-
-          // 🚗 VEHÍCULO DENTRO DEL PARQUEO
-          if (usandoParqueo)
-            Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-
-                child: Column(
-                  children: [
-                    // 🚗 CARD PRINCIPAL
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 500),
-
-                      width: double.infinity,
-
-                      padding: const EdgeInsets.all(25),
-
-                      decoration: BoxDecoration(
-                        color: AppColors.azul,
-                        borderRadius: BorderRadius.circular(35),
-
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.azul.withOpacity(0.2),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-
-                      child: Column(
-                        children: [
-                          const SizedBox(height: 10),
-
-                          Icon(
-                            Icons.directions_car,
-                            size: 120,
-                            color: AppColors.amarillo,
-                          ),
-
-                          const SizedBox(height: 20),
-
-                          Text(
-                            "P 123-456",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 32,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 2,
-                            ),
-                          ),
-
-                          const SizedBox(height: 10),
-
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 18,
-                              vertical: 8,
-                            ),
-
-                            decoration: BoxDecoration(
-                              color: Colors.green,
-                              borderRadius: BorderRadius.circular(30),
-                            ),
-
-                            child: const Text(
-                              "Vehículo dentro del parqueo",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 25),
-
-                          // ⏱️ TIEMPO
-                          Container(
-                            padding: const EdgeInsets.all(18),
-
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(25),
-                            ),
-
-                            child: Column(
-                              children: [
-                                const Text(
-                                  "Tiempo dentro",
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 15,
-                                  ),
-                                ),
-
-                                const SizedBox(height: 8),
-
-                                Text(
-                                  formatearTiempo(tiempo),
-                                  style: TextStyle(
-                                    color: AppColors.amarillo,
-                                    fontSize: 30,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 2,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 25),
-
-                    // 📋 INFORMACIÓN
-                    infoItem(Icons.local_parking, "Parqueo", "Principal"),
-
-                    infoItem(Icons.place, "Espacio", "A-15"),
-
-                    infoItem(Icons.category, "Tipo de vehículo", "Carro"),
-
-                    infoItem(Icons.color_lens, "Color", "Negro"),
-
-                    infoItem(Icons.access_time, "Hora de entrada", "08:30 AM"),
-
-                    infoItem(Icons.logout, "Hora de salida", "Pendiente"),
-                  ],
-                ),
-              ),
-            ),
+  Widget _rowSimple(String label, String value, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 15),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey)),
+          Text(value, style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.w500)),
         ],
       ),
     );
