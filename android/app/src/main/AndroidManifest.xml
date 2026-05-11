@@ -1,6 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.CALL_PHONE" />
 
     <application
         android:label="ucad_parki"
@@ -17,18 +18,15 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
             
-            <!-- 1. FILTRO PRINCIPAL (INDISPENSABLE PARA LANZAR LA APP) -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- 2. FILTRO DE RECUPERACIÓN (DEEP LINKING PARA SUPABASE) -->
             <intent-filter android:label="restablecer_password">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <!-- Debe coincidir con lo configurado en Supabase Dashboard -->
                 <data android:scheme="io.supabase.ucadparki" android:host="reset-password" />
             </intent-filter>
 
@@ -43,6 +41,17 @@
     </application>
 
     <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
