@@ -51,7 +51,7 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    // Escuchamos solo lo necesario para reconstruir el MaterialApp
+    
     final config = Provider.of<ConfigProvider>(context);
 
     return MaterialApp(

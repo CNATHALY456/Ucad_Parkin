@@ -18,7 +18,6 @@ class _RegistroSalidaState extends State<RegistroSalida> {
   Map<String, dynamic>? ticketFinalizado;
   bool procesando = false;
 
-  // Lógica principal de salida
   void procesarSalida() async {
     final placaLimpia = placaCtrl.text.trim().toUpperCase();
     if (placaLimpia.isEmpty) {
@@ -32,7 +31,7 @@ class _RegistroSalidaState extends State<RegistroSalida> {
     });
 
     try {
-      // 1. BUSQUEDA: Solo tickets con estado 'activo'
+      // 1. BUSQUEDA: Solo tickets activos que coincidan con la placa en observaciones o ID
       final ticketActivo = await supabase
           .from('tickets')
           .select()
@@ -42,38 +41,32 @@ class _RegistroSalidaState extends State<RegistroSalida> {
 
       if (ticketActivo != null) {
         final idTicket = ticketActivo['id_ticket'];
+        
+        // --- CAPTURA DE HORA LOCAL (EL SALVADOR) ---
+        final DateTime ahoraSalida = DateTime.now();
 
-        // 2. ACTUALIZACIÓN: Cambiamos estado a 'finalizado' y grabamos hora de salida
+        // 2. ACTUALIZACIÓN: Cambiamos estado y grabamos hora local
         await supabase
             .from('tickets')
             .update({
-              'fecha_hora_salida': DateTime.now().toIso8601String(),
+              'fecha_hora_salida': ahoraSalida.toIso8601String(),
               'estado_ticket': 'finalizado',
               'metodo_salida': 'manual'
             })
             .match({'id_ticket': idTicket});
 
-        // 3. VERIFICACIÓN: Confirmamos que el cambio impactó en la DB
-        final confirmacion = await supabase
-            .from('tickets')
-            .select('estado_ticket')
-            .eq('id_ticket', idTicket)
-            .single();
-
-        if (confirmacion['estado_ticket'] == 'finalizado') {
-          setState(() {
-            ticketFinalizado = {
-              'placa': placaLimpia,
-              'entrada': ticketActivo['fecha_hora_entrada'],
-              'salida': DateTime.now().toIso8601String()
-            };
-            procesando = false;
-          });
-          placaCtrl.clear();
-          _showSnackBar("✅ Salida registrada y confirmada", Colors.green);
-        } else {
-          throw "Error de consistencia: El estado no cambió.";
-        }
+        // 3. VERIFICACIÓN Y RESUMEN
+        setState(() {
+          ticketFinalizado = {
+            'placa': placaLimpia,
+            'entrada': ticketActivo['fecha_hora_entrada'], // Viene de DB (se convertirá en el widget)
+            'salida': ahoraSalida.toIso8601String(),
+          };
+          procesando = false;
+        });
+        
+        placaCtrl.clear();
+        _showSnackBar("✅ Salida registrada a las ${DateFormat('hh:mm a').format(ahoraSalida)}", Colors.green);
       } else {
         setState(() => procesando = false);
         _showSnackBar("⚠️ No hay tickets ACTIVOS para: $placaLimpia", Colors.orange);
@@ -81,7 +74,18 @@ class _RegistroSalidaState extends State<RegistroSalida> {
     } catch (e) {
       setState(() => procesando = false);
       debugPrint("Error crítico en salida: $e");
-      _showSnackBar("❌ Error al guardar: Revisa tus políticas RLS", Colors.red);
+      _showSnackBar("❌ Error al guardar. Verifica conexión o políticas RLS", Colors.red);
+    }
+  }
+
+  // --- FORMATEADOR DE FECHA CON CONVERSIÓN LOCAL ---
+  String _formatDate(String dateStr) {
+    try {
+      // DateTime.parse lee el string de Supabase y .toLocal() lo pasa a hora de El Salvador
+      final DateTime fecha = DateTime.parse(dateStr).toLocal();
+      return DateFormat('hh:mm a').format(fecha);
+    } catch (e) {
+      return dateStr;
     }
   }
 
@@ -101,7 +105,6 @@ class _RegistroSalidaState extends State<RegistroSalida> {
   @override
   Widget build(BuildContext context) {
     final isDark = Provider.of<ConfigProvider>(context).isDarkMode;
-    final theme = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF121212) : AppColors.azul,
@@ -115,100 +118,96 @@ class _RegistroSalidaState extends State<RegistroSalida> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            // CAMPO DE TEXTO PARA PLACA
-            TextField(
-              controller: placaCtrl,
-              textCapitalization: TextCapitalization.characters,
-              style: TextStyle(color: isDark ? Colors.white : Colors.black),
-              decoration: InputDecoration(
-                hintText: "PLACA DEL VEHÍCULO",
-                hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey),
-                filled: true,
-                fillColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
-                  borderSide: BorderSide.none,
-                ),
-                prefixIcon: Icon(Icons.exit_to_app, color: isDark ? AppColors.amarillo : Colors.redAccent),
-              ),
-            ),
+            _buildInputPlaca(isDark),
             const SizedBox(height: 25),
-            
-            // BOTÓN DE ACCIÓN
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                onPressed: procesando ? null : procesarSalida,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isDark ? AppColors.amarillo : Colors.redAccent,
-                  foregroundColor: isDark ? Colors.black : Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  elevation: 5,
-                ),
-                child: procesando 
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text("MARCAR SALIDA", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              ),
-            ),
-
-            // RESUMEN VISUAL SI LA SALIDA FUE EXITOSA
-            if (ticketFinalizado != null) _buildResumen(isDark, theme),
+            _buildBotonSalida(isDark),
+            if (ticketFinalizado != null) _buildResumen(isDark),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildResumen(bool isDark, ColorScheme theme) {
+  Widget _buildInputPlaca(bool isDark) {
     return Container(
-      margin: const EdgeInsets.only(top: 40),
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [if(!isDark) const BoxShadow(color: Colors.black12, blurRadius: 10)],
+      ),
+      child: TextField(
+        controller: placaCtrl,
+        textCapitalization: TextCapitalization.characters,
+        style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
+        decoration: InputDecoration(
+          hintText: "PLACA DEL VEHÍCULO",
+          hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.grey),
+          prefixIcon: Icon(Icons.directions_car, color: isDark ? AppColors.amarillo : Colors.redAccent),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBotonSalida(bool isDark) {
+    return SizedBox(
+      width: double.infinity,
+      height: 60,
+      child: ElevatedButton.icon(
+        onPressed: procesando ? null : procesarSalida,
+        icon: procesando ? const SizedBox() : const Icon(Icons.logout),
+        label: procesando 
+          ? const CircularProgressIndicator(color: Colors.white)
+          : const Text("MARCAR SALIDA AHORA", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.redAccent,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          elevation: 4,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResumen(bool isDark) {
+    return Container(
+      margin: const EdgeInsets.only(top: 40),
+      padding: const EdgeInsets.all(25),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(25),
         border: Border.all(color: Colors.green.withOpacity(0.5), width: 2),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))
-        ]
       ),
       child: Column(
         children: [
-          const Icon(Icons.check_circle_outline, color: Colors.green, size: 60),
-          const SizedBox(height: 10),
-          const Text("SALIDA PROCESADA", 
+          const Icon(Icons.check_circle, color: Colors.green, size: 60),
+          const SizedBox(height: 15),
+          const Text("SALIDA EXITOSA", 
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.green)),
           const Divider(height: 30),
           _row("Vehículo", ticketFinalizado!['placa'], isDark),
           _row("H. Entrada", _formatDate(ticketFinalizado!['entrada']), isDark),
           _row("H. Salida", _formatDate(ticketFinalizado!['salida']), isDark),
-          const SizedBox(height: 10),
-          const Text("El espacio ha sido liberado en el sistema.", 
-            style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic)),
+          const SizedBox(height: 15),
+          const Text("Sistema actualizado: Espacio libre", 
+            style: TextStyle(fontSize: 13, color: Colors.grey, fontStyle: FontStyle.italic)),
         ],
       ),
     );
   }
 
-  String _formatDate(String date) {
-    try {
-      return DateFormat('hh:mm a').format(DateTime.parse(date).toLocal());
-    } catch (e) {
-      return date;
-    }
-  }
-
   Widget _row(String label, String valor, bool isDark) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 15)),
           Text(valor, style: TextStyle(
             color: isDark ? Colors.white : Colors.black, 
             fontWeight: FontWeight.bold,
-            fontSize: 15
+            fontSize: 16
           )),
         ],
       ),

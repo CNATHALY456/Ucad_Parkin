@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:ucad_parki/providers/config_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ucad_parki/utils/app_colors.dart';
 
@@ -10,6 +12,8 @@ class MiVehiculo extends StatefulWidget {
 }
 
 class _MiVehiculoState extends State<MiVehiculo> {
+  final supabase = Supabase.instance.client;
+
   // 📝 CONTROLLERS
   final placaCtrl = TextEditingController();
   final marcaCtrl = TextEditingController();
@@ -19,15 +23,12 @@ class _MiVehiculoState extends State<MiVehiculo> {
 
   String tipoVehiculo = "Carro";
   bool cargando = false;
+  dynamic idVehiculoEditando; // Nulo para nuevo, con ID para editar
 
-  // ➕ GUARDAR VEHÍCULO Y VINCULAR AL PERFIL
-  Future<void> guardarEnSupabase() async {
-    final user = Supabase.instance.client.auth.currentUser;
-    
-    if (user == null) {
-      _mostrarSnack("Sesión no iniciada", Colors.red);
-      return;
-    }
+  // 💾 GUARDAR O ACTUALIZAR
+  Future<void> procesarVehiculo() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
 
     final placaLimpia = placaCtrl.text.trim().toUpperCase();
     if (placaLimpia.isEmpty) {
@@ -38,188 +39,237 @@ class _MiVehiculoState extends State<MiVehiculo> {
     setState(() => cargando = true);
 
     try {
-      // Mapeo de tipos de vehículo (1: Carro, 2: Moto, 3: Bicicleta)
-      int idTipo = 1; 
-      if (tipoVehiculo == "Moto") idTipo = 2;
-      if (tipoVehiculo == "Bicicleta") idTipo = 3;
-
-      // 1. Insertar en la tabla 'vehiculos'
-      await Supabase.instance.client.from('vehiculos').insert({
+      int idTipo = (tipoVehiculo == "Moto") ? 2 : (tipoVehiculo == "Bicicleta" ? 3 : 1);
+      
+      final datos = {
         'id_usuario': user.id,
         'placa': placaLimpia,
         'marca': marcaCtrl.text.trim(),
         'modelo': modeloCtrl.text.trim(),
         'color': colorCtrl.text.trim(),
         'anio': int.tryParse(anioCtrl.text) ?? 0,
-        'id_tipo_vehiculo': idTipo, 
-        'estado': 'activo', 
-      });
+        'id_tipo_vehiculo': idTipo,
+        'estado': 'activo',
+      };
 
-      // 2. Actualizar el perfil del usuario (Vínculo para Mi Parqueo)
-      await Supabase.instance.client.from('perfiles').update({
-        'placa_principal': placaLimpia,
-      }).eq('id', user.id);
+      if (idVehiculoEditando == null) {
+        await supabase.from('vehiculos').insert(datos);
+      } else {
+        await supabase.from('vehiculos').update(datos).eq('id_vehiculo', idVehiculoEditando);
+      }
+
+      await supabase.from('perfiles').update({'placa_principal': placaLimpia}).eq('id', user.id);
 
       if (mounted) {
+        Navigator.pop(context);
+        _mostrarSnack(idVehiculoEditando == null ? "Vehículo Guardado" : "Vehículo Actualizado", Colors.green);
         _limpiarFormulario();
-        Navigator.pop(context); // Cerrar el modal
-        _mostrarSnack("¡Vehículo registrado con éxito!", Colors.green);
       }
-    } on PostgrestException catch (e) {
-      String mensaje = e.code == '23505' ? "Esta placa ya existe" : "Error de base de datos";
-      if (mounted) _mostrarSnack(mensaje, Colors.red);
     } catch (e) {
-      if (mounted) _mostrarSnack("Error inesperado al guardar", Colors.red);
+      _mostrarSnack("Error al procesar los datos", Colors.red);
     } finally {
       if (mounted) setState(() => cargando = false);
     }
   }
 
-  // ❌ ELIMINAR VEHÍCULO Y LIMPIAR PERFIL
-  Future<void> eliminarVehiculo(dynamic idVehiculo) async {
-    final user = Supabase.instance.client.auth.currentUser;
+  // 🗑️ ELIMINAR
+  Future<void> eliminarVehiculo(dynamic id) async {
     try {
-      // Borrar el vehículo
-      await Supabase.instance.client
-          .from('vehiculos')
-          .delete()
-          .eq('id_vehiculo', idVehiculo);
-          
-      // Desvincular del perfil para que MiParqueo se resetee
+      await supabase.from('vehiculos').delete().eq('id_vehiculo', id);
+      final user = supabase.auth.currentUser;
       if (user != null) {
-        await Supabase.instance.client.from('perfiles').update({
-          'placa_principal': null, 
-        }).eq('id', user.id);
+        await supabase.from('perfiles').update({'placa_principal': null}).eq('id', user.id);
       }
-
-      if (mounted) _mostrarSnack("Vehículo eliminado", Colors.black87);
+      _mostrarSnack("Vehículo eliminado", Colors.black87);
     } catch (e) {
-      debugPrint("Error al eliminar: $e");
+      debugPrint("Error: $e");
     }
   }
 
   void _limpiarFormulario() {
-    placaCtrl.clear();
-    marcaCtrl.clear();
-    modeloCtrl.clear();
-    colorCtrl.clear();
-    anioCtrl.clear();
+    placaCtrl.clear(); marcaCtrl.clear(); modeloCtrl.clear(); colorCtrl.clear(); anioCtrl.clear();
+    idVehiculoEditando = null;
+    tipoVehiculo = "Carro";
   }
 
   void _mostrarSnack(String msg, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: color)
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: color));
   }
 
-  // 🎨 DISEÑO DEL MODAL PARA AGREGAR
-  void mostrarFormulario() {
+  // 🎨 FORMULARIO (MODAL)
+  void mostrarFormulario({Map<String, dynamic>? v}) {
+    if (v != null) {
+      idVehiculoEditando = v['id_vehiculo'];
+      placaCtrl.text = v['placa'];
+      marcaCtrl.text = v['marca'] ?? '';
+      modeloCtrl.text = v['modelo'] ?? '';
+      colorCtrl.text = v['color'] ?? '';
+      anioCtrl.text = v['anio']?.toString() ?? '';
+      tipoVehiculo = v['id_tipo_vehiculo'] == 2 ? "Moto" : (v['id_tipo_vehiculo'] == 3 ? "Bicicleta" : "Carro");
+    } else {
+      _limpiarFormulario();
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            final isDark = Theme.of(context).brightness == Brightness.dark;
-            return Container(
-              padding: EdgeInsets.only(
-                left: 25, right: 25, top: 25,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 25,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          final isDark = Provider.of<ConfigProvider>(context).isDarkMode;
+          return Container(
+            padding: EdgeInsets.fromLTRB(25, 15, 25, MediaQuery.of(context).viewInsets.bottom + 25),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(35)),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+                  const SizedBox(height: 25),
+                  Text(idVehiculoEditando == null ? "NUEVO VEHÍCULO" : "EDITAR VEHÍCULO", 
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: isDark ? AppColors.amarillo : AppColors.azul)),
+                  const SizedBox(height: 25),
+                  _input("Placa", placaCtrl, isDark),
+                  Row(
+                    children: [
+                      Expanded(child: _input("Marca", marcaCtrl, isDark)),
+                      const SizedBox(width: 15),
+                      Expanded(child: _input("Modelo", modeloCtrl, isDark)),
+                    ],
+                  ),
+                  _input("Color", colorCtrl, isDark),
+                  _input("Año", anioCtrl, isDark),
+                  
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    value: tipoVehiculo,
+                    dropdownColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                    style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: isDark ? Colors.white10 : Colors.grey.shade100,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+                    ),
+                    items: ["Carro", "Moto", "Bicicleta"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                    onChanged: (val) => setModalState(() => tipoVehiculo = val!),
+                  ),
+                  const SizedBox(height: 30),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 55,
+                    child: ElevatedButton(
+                      onPressed: cargando ? null : procesarVehiculo,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.azul,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                      ),
+                      child: cargando 
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text("GUARDAR CAMBIOS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
               ),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(35)),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 60, height: 5,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 25),
-                    Text(
-                      "Nuevo Vehículo",
-                      style: TextStyle(
-                        fontSize: 28, fontWeight: FontWeight.bold,
-                        color: isDark ? AppColors.amarillo : AppColors.azul,
-                      ),
-                    ),
-                    const SizedBox(height: 25),
-                    campo("Placa (Ej: P123456)", placaCtrl, isDark),
-                    campo("Marca", marcaCtrl, isDark),
-                    campo("Modelo", modeloCtrl, isDark),
-                    campo("Color", colorCtrl, isDark),
-                    campo("Año", anioCtrl, isDark),
-                    const SizedBox(height: 10),
-                    Text("Tipo", style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? AppColors.amarillo : AppColors.azul)),
-                    const SizedBox(height: 10),
-                    DropdownButtonFormField<String>(
-                      value: tipoVehiculo,
-                      dropdownColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
-                      style: TextStyle(color: isDark ? Colors.white : Colors.black),
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: isDark ? Colors.white10 : Colors.grey.shade100,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-                      ),
-                      items: ["Carro", "Moto", "Bicicleta"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                      onChanged: (value) => setModalState(() => tipoVehiculo = value!),
-                    ),
-                    const SizedBox(height: 30),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: cargando ? null : guardarEnSupabase,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.azul,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                        ),
-                        child: cargando 
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text("Guardar", style: TextStyle(fontSize: 17, color: Colors.white, fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+            ),
+          );
+        },
+      ),
     );
   }
 
-  IconData iconoVehiculo(int idTipo) {
-    if (idTipo == 2) return Icons.two_wheeler;
-    if (idTipo == 3) return Icons.pedal_bike;
-    return Icons.directions_car;
+  Widget _input(String label, TextEditingController ctrl, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 15),
+      child: TextField(
+        controller: ctrl,
+        textCapitalization: TextCapitalization.characters,
+        style: TextStyle(color: isDark ? Colors.white : Colors.black),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+          filled: true,
+          fillColor: isDark ? Colors.white10 : Colors.grey.shade100,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+        ),
+      ),
+    );
   }
 
-  Widget campo(String titulo, TextEditingController controller, bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
+  // --- VISTA PRINCIPAL ---
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Provider.of<ConfigProvider>(context).isDarkMode;
+    final user = supabase.auth.currentUser;
+
+    return Container(
+      color: isDark ? const Color(0xFF121212) : AppColors.azul, // Identidad visual
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(titulo, style: TextStyle(color: isDark ? Colors.white70 : AppColors.azul, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: controller,
-            textCapitalization: TextCapitalization.characters,
-            style: TextStyle(color: isDark ? Colors.white : Colors.black),
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: isDark ? Colors.white10 : Colors.grey.shade100,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+          // Logo Superior Adaptativo
+          SafeArea(
+            child: Container(
+              height: 180,
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Image.asset(
+                isDark ? 'assets/parky2.jpeg' : 'assets/parky.png',
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+          
+          // Cuerpo Blanco/Oscuro Redondeado
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(45)),
+              ),
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(45)),
+                child: StreamBuilder<List<Map<String, dynamic>>>(
+                  stream: supabase.from('vehiculos').stream(primaryKey: ['id_vehiculo']).eq('id_usuario', user?.id ?? ''),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                    final vehiculos = snapshot.data!;
+
+                    return Padding(
+                      padding: const EdgeInsets.all(30),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text("MIS VEHÍCULOS", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: isDark ? AppColors.amarillo : AppColors.azul)),
+                              IconButton(
+                                icon: Icon(Icons.add_circle, color: isDark ? AppColors.amarillo : AppColors.azul, size: 35),
+                                onPressed: () => mostrarFormulario(),
+                              )
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          
+                          if (vehiculos.isEmpty)
+                            Expanded(child: Center(child: Text("No tienes vehículos registrados", style: TextStyle(color: Colors.grey[400]))))
+                          else
+                            Expanded(
+                              child: PageView.builder(
+                                controller: PageController(viewportFraction: 0.9),
+                                itemCount: vehiculos.length,
+                                itemBuilder: (context, index) => _cardGarage(vehiculos[index], isDark),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
             ),
           ),
         ],
@@ -227,119 +277,46 @@ class _MiVehiculoState extends State<MiVehiculo> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final user = Supabase.instance.client.auth.currentUser;
-
-    if (user == null) return const Center(child: Text("Sesión no iniciada"));
-
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: Supabase.instance.client
-          .from('vehiculos')
-          .stream(primaryKey: ['id_vehiculo']) // Ajustado a tu base de datos
-          .eq('id_usuario', user.id)
-          .order('id_vehiculo', ascending: false),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: AppColors.amarillo));
-        }
-
-        final vehiculosDB = snapshot.data ?? [];
-
-        return Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "Mi Vehículo",
-                style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: isDark ? AppColors.amarillo : AppColors.azul),
-              ),
-              const SizedBox(height: 25),
-
-              if (vehiculosDB.isEmpty)
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Center(child: Icon(Icons.car_rental, size: 150, color: Colors.grey.shade300)),
-                      const SizedBox(height: 20),
-                      Text("No tienes ningún vehículo", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: isDark ? Colors.white : AppColors.azul)),
-                      const SizedBox(height: 30),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: mostrarFormulario,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.azul,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                          ),
-                          child: const Text("Agregar ahora", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                Expanded(
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: PageView.builder(
-                          itemCount: vehiculosDB.length,
-                          itemBuilder: (context, index) {
-                            final v = vehiculosDB[index];
-                            return Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 10),
-                              padding: const EdgeInsets.all(25),
-                              decoration: BoxDecoration(
-                                color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                                borderRadius: BorderRadius.circular(30),
-                                boxShadow: [if (!isDark) const BoxShadow(color: Colors.black12, blurRadius: 15, offset: Offset(0, 5))],
-                              ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(iconoVehiculo(v["id_tipo_vehiculo"] ?? 1), size: 100, color: isDark ? AppColors.amarillo : AppColors.azul),
-                                  const SizedBox(height: 20),
-                                  Text(v["placa"], style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
-                                  Text("${v["marca"]} ${v["modelo"]}", style: const TextStyle(fontSize: 18, color: Colors.grey)),
-                                  const SizedBox(height: 25),
-                                  ElevatedButton.icon(
-                                    onPressed: () => eliminarVehiculo(v["id_vehiculo"]),
-                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
-                                    icon: const Icon(Icons.delete),
-                                    label: const Text("Eliminar"),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: mostrarFormulario,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.azul,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                          ),
-                          icon: const Icon(Icons.add, color: Colors.white),
-                          label: const Text("Agregar otro", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
+  Widget _cardGarage(Map<String, dynamic> v, bool isDark) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 20),
+      padding: const EdgeInsets.all(30),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+        borderRadius: BorderRadius.circular(35),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(isDark ? 0.3 : 0.08), blurRadius: 20, offset: const Offset(0, 10))
+        ],
+        border: isDark ? Border.all(color: Colors.white.withOpacity(0.05)) : null,
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            v['id_tipo_vehiculo'] == 2 ? Icons.two_wheeler : (v['id_tipo_vehiculo'] == 3 ? Icons.pedal_bike : Icons.directions_car),
+            size: 80, color: isDark ? AppColors.amarillo : AppColors.azul,
           ),
-        );
-      },
+          const SizedBox(height: 20),
+          Text(v['placa'], style: TextStyle(fontSize: 35, fontWeight: FontWeight.w900, color: isDark ? Colors.white : Colors.black)),
+          Text("${v['marca']} ${v['modelo']}".toUpperCase(), style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+          const Spacer(),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _btnAccion(Icons.edit_rounded, "Editar", Colors.blue, () => mostrarFormulario(v: v)),
+              _btnAccion(Icons.delete_outline_rounded, "Eliminar", Colors.redAccent, () => eliminarVehiculo(v['id_vehiculo'])),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _btnAccion(IconData icono, String texto, Color color, VoidCallback onTap) {
+    return TextButton.icon(
+      onPressed: onTap,
+      icon: Icon(icono, color: color, size: 20),
+      label: Text(texto, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
     );
   }
 }

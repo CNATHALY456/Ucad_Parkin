@@ -37,7 +37,11 @@ class _UsuarioHomeState extends State<UsuarioHome> {
     bool esPerfil = _index == 3;
 
     return Scaffold(
-      backgroundColor: isDark ? theme.surface : AppColors.azul,
+      // Si es perfil, el fondo lo maneja la página, si no, usamos el azul/negro de la app
+      backgroundColor: esPerfil 
+          ? (isDark ? theme.surface : Colors.white) 
+          : (isDark ? theme.surface : AppColors.azul),
+      
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
         onTap: (value) {
@@ -56,33 +60,23 @@ class _UsuarioHomeState extends State<UsuarioHome> {
           BottomNavigationBarItem(icon: Icon(Icons.person), label: "Perfil"),
         ],
       ),
+      
       body: SafeArea(
-        // Si es perfil, quitamos el padding superior del SafeArea para que el diseño suba
+        // Mantenemos tu lógica: Perfil sube hasta arriba (top: false)
         top: !esPerfil,
         child: Column(
           children: [
-            // --- LOGO CONDICIONAL ---
-            // Solo se renderiza si NO estamos en Perfil
-            if (!esPerfil) ...[
-              const SizedBox(height: 20),
-              Center(
-                child: Image.asset(
-                  isDark ? 'assets/parky2.jpeg' : 'assets/parky.png',
-                  height: 170,
-                  cacheHeight: 400,
-                ),
-              ),
-              const SizedBox(height: 20),
-            ],
-
-            // --- CONTENEDOR DINÁMICO ---
+            // LOGO ELIMINADO de todas las páginas
+            
+            // CONTENEDOR DINÁMICO
             Expanded(
               child: Container(
                 width: double.infinity,
-                // Si es perfil, quitamos los paddings y el redondeo para respetar PerfilPage
+                // Si es perfil, EdgeInsets.zero y sin redondeo.
+                // Si no, aplicamos el estilo de contenedor redondeado.
                 padding: esPerfil ? EdgeInsets.zero : const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: theme.surface,
+                  color: isDark ? const Color(0xFF121212) : const Color(0xFFF5F7FA),
                   borderRadius: esPerfil 
                       ? BorderRadius.zero 
                       : const BorderRadius.vertical(top: Radius.circular(40)),
