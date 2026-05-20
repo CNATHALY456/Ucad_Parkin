@@ -101,15 +101,20 @@ class _MiParqueoState extends State<MiParqueo> {
         }
 
         if (miTicketActivo.isEmpty) {
-          timer?.cancel();
-          timer = null;
+          if (timer != null) {
+            timer?.cancel();
+            timer = null;
+          }
           return _buildVistaVacia(isDark);
         }
 
         final DateTime entrada = DateTime.parse(miTicketActivo['fecha_hora_entrada']).toLocal();
 
+        // 🔥 CORRECCIÓN PARA EL ERROR SETSTATE DURING BUILD
         if (timer == null || !timer!.isActive) {
-          _iniciarReloj(entrada);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _iniciarReloj(entrada);
+          });
         }
 
         double horasDecimales = tiempoTranscurrido.inSeconds / 3600;
@@ -131,7 +136,10 @@ class _MiParqueoState extends State<MiParqueo> {
           Container(
             padding: const EdgeInsets.all(30),
             decoration: BoxDecoration(
-              color: isDark ? Colors.white.withOpacity(0.05) : AppColors.azul.withOpacity(0.05),
+              // ✅ CORRECCIÓN withValues
+              color: isDark 
+                ? Colors.white.withValues(alpha: 0.05) 
+                : AppColors.azul.withValues(alpha: 0.05),
               shape: BoxShape.circle,
             ),
             child: Icon(Icons.no_crash_rounded, size: 80, color: isDark ? AppColors.amarillo : AppColors.azul),
@@ -161,8 +169,9 @@ class _MiParqueoState extends State<MiParqueo> {
           const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
-            decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-            child: Text(miPlaca!, style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+            // ✅ CORRECCIÓN withValues
+            decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+            child: Text(miPlaca ?? "SIN PLACA", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
           ),
           const Padding(
             padding: EdgeInsets.all(40),
@@ -196,13 +205,15 @@ class _MiParqueoState extends State<MiParqueo> {
                 begin: Alignment.topLeft, end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(40),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 10))],
+              // ✅ CORRECCIÓN withValues en Shadow
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 15, offset: const Offset(0, 10))],
             ),
             child: Column(
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(color: Colors.redAccent.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
+                  // ✅ CORRECCIÓN withValues
+                  decoration: BoxDecoration(color: Colors.redAccent.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20)),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -223,7 +234,7 @@ class _MiParqueoState extends State<MiParqueo> {
                     letterSpacing: -2
                   ),
                 ),
-                Text("TIEMPO ESTACIONADO", style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12, fontWeight: FontWeight.bold)),
+                Text("TIEMPO ESTACIONADO", style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.bold)),
               ],
             ),
           ),
@@ -234,9 +245,10 @@ class _MiParqueoState extends State<MiParqueo> {
             child: Container(
               padding: const EdgeInsets.all(25),
               decoration: BoxDecoration(
-                color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50].withOpacity(0.5),
+                // ✅ CORRECCIÓN withValues y nulabilidad
+                color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50]?.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: isDark ? Colors.white10 : Colors.grey[200]!),
+                border: Border.all(color: isDark ? Colors.white10 : Colors.grey[200] ?? Colors.grey),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -249,11 +261,11 @@ class _MiParqueoState extends State<MiParqueo> {
                       Text("\$${monto.toStringAsFixed(2)}", style: const TextStyle(fontSize: 38, fontWeight: FontWeight.w900, color: Colors.green)),
                     ],
                   ),
-                  const Column(
+                  Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text("TARIFA", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 10)),
-                      Text("\$0.50/hr", style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Text("TARIFA", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 10)),
+                      Text("\$${tarifaPorHora.toStringAsFixed(2)}/hr", style: const TextStyle(fontWeight: FontWeight.bold)),
                     ],
                   )
                 ],
@@ -284,7 +296,7 @@ class _MiParqueoState extends State<MiParqueo> {
             margin: const EdgeInsets.symmetric(horizontal: 40),
             padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
-              color: Colors.amber.withOpacity(0.1),
+              color: Colors.amber.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(15),
             ),
             child: Row(
@@ -311,7 +323,10 @@ class _MiParqueoState extends State<MiParqueo> {
       children: [
         Container(
           padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: isDark ? Colors.white10 : AppColors.azul.withOpacity(0.05), borderRadius: BorderRadius.circular(12)),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.white10 : AppColors.azul.withValues(alpha: 0.05), 
+            borderRadius: BorderRadius.circular(12)
+          ),
           child: Icon(icon, color: isDark ? AppColors.amarillo : AppColors.azul, size: 20),
         ),
         const SizedBox(width: 20),

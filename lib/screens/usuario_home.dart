@@ -19,7 +19,6 @@ class UsuarioHome extends StatefulWidget {
 class _UsuarioHomeState extends State<UsuarioHome> {
   int _index = 1; // Inicia en Parqueo
 
-  // Lista de páginas
   final List<Widget> _paginas = [
     const MiVehiculo(),
     const MiParqueo(),
@@ -31,63 +30,60 @@ class _UsuarioHomeState extends State<UsuarioHome> {
   Widget build(BuildContext context) {
     final config = Provider.of<ConfigProvider>(context);
     final isDark = config.isDarkMode;
-    final theme = Theme.of(context).colorScheme;
 
-    // Condición: ¿Estamos en la vista de Perfil? (Índice 3)
-    bool esPerfil = _index == 3;
+    // Definimos el color de fondo base para TODA la app
+    // Esto hace que todas las subvistas compartan el mismo lienzo
+    final Color backgroundColor = isDark 
+        ? const Color(0xFF121212) 
+        : const Color(0xFFF8F9FD); // Un blanco azulado muy sutil
 
     return Scaffold(
-      // Si es perfil, el fondo lo maneja la página, si no, usamos el azul/negro de la app
-      backgroundColor: esPerfil 
-          ? (isDark ? theme.surface : Colors.white) 
-          : (isDark ? theme.surface : AppColors.azul),
+      backgroundColor: backgroundColor,
       
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _index,
-        onTap: (value) {
-          setState(() {
-            _index = value;
-          });
-        },
-        backgroundColor: theme.surface,
-        selectedItemColor: isDark ? AppColors.amarillo : AppColors.azul,
-        unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.directions_car), label: "Vehículo"),
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: "Parqueo"),
-          BottomNavigationBarItem(icon: Icon(Icons.history), label: "Historial"),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: "Perfil"),
-        ],
+      // Extendemos el cuerpo detrás de la barra de navegación para mayor fluidez
+      extendBody: true,
+
+      body: IndexedStack(
+        index: _index,
+        children: _paginas,
       ),
-      
-      body: SafeArea(
-        // Mantenemos tu lógica: Perfil sube hasta arriba (top: false)
-        top: !esPerfil,
-        child: Column(
-          children: [
-            // LOGO ELIMINADO de todas las páginas
+
+      bottomNavigationBar: Container(
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 20), // Flotante para estilo moderno
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(30),
+          child: BottomNavigationBar(
+            currentIndex: _index,
+            onTap: (value) => setState(() => _index = value),
             
-            // CONTENEDOR DINÁMICO
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                // Si es perfil, EdgeInsets.zero y sin redondeo.
-                // Si no, aplicamos el estilo de contenedor redondeado.
-                padding: esPerfil ? EdgeInsets.zero : const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF121212) : const Color(0xFFF5F7FA),
-                  borderRadius: esPerfil 
-                      ? BorderRadius.zero 
-                      : const BorderRadius.vertical(top: Radius.circular(40)),
-                ),
-                child: IndexedStack(
-                  index: _index,
-                  children: _paginas,
-                ),
+            // Estética
+            backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            selectedItemColor: isDark ? AppColors.amarillo : AppColors.azul,
+            unselectedItemColor: Colors.grey.withValues(alpha: 0.5),
+            showSelectedLabels: true,
+            showUnselectedLabels: false,
+            type: BottomNavigationBarType.fixed,
+            elevation: 10,
+            
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.directions_car_filled_rounded), 
+                label: "Vehículo"
               ),
-            ),
-          ],
+              BottomNavigationBarItem(
+                icon: Icon(Icons.local_parking_rounded), 
+                label: "Parqueo"
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.history_rounded), 
+                label: "Historial"
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.person_rounded), 
+                label: "Perfil"
+              ),
+            ],
+          ),
         ),
       ),
     );
