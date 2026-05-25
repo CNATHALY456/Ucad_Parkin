@@ -163,12 +163,12 @@ class _MiVehiculoState extends State<MiVehiculo> {
                     child: ElevatedButton(
                       onPressed: cargando ? null : procesarVehiculo,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.azul,
+                        backgroundColor: isDark ? AppColors.amarillo : AppColors.azul,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                       ),
                       child: cargando 
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text("GUARDAR CAMBIOS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        : Text("GUARDAR CAMBIOS", style: TextStyle(color: isDark ? Colors.black : Colors.white, fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],
@@ -198,94 +198,87 @@ class _MiVehiculoState extends State<MiVehiculo> {
     );
   }
 
-  // --- VISTA PRINCIPAL ---
+  // --- VISTA PRINCIPAL (CORREGIDA Y ADAPTADA) ---
   @override
   Widget build(BuildContext context) {
     final isDark = Provider.of<ConfigProvider>(context).isDarkMode;
     final user = supabase.auth.currentUser;
 
     return Container(
-      color: isDark ? const Color(0xFF121212) : AppColors.azul, // Identidad visual
-      child: Column(
-        children: [
-          // Logo Superior Adaptativo
-          SafeArea(
-            child: Container(
-              height: 180,
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              child: Image.asset(
-                isDark ? 'assets/parky2.jpeg' : 'assets/parky.png',
-                fit: BoxFit.contain,
-              ),
-            ),
-          ),
-          
-          // Cuerpo Blanco/Oscuro Redondeado
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(45)),
-              ),
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(45)),
-                child: StreamBuilder<List<Map<String, dynamic>>>(
-                  stream: supabase.from('vehiculos').stream(primaryKey: ['id_vehiculo']).eq('id_usuario', user?.id ?? ''),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                    final vehiculos = snapshot.data!;
+      // Se adapta al fondo general de la app sin barras de color toscas
+      color: isDark ? const Color(0xFF121212) : const Color(0xFFF8F9FD), 
+      child: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: supabase.from('vehiculos').stream(primaryKey: ['id_vehiculo']).eq('id_usuario', user?.id ?? ''),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          final vehiculos = snapshot.data!;
 
-                    return Padding(
-                      padding: const EdgeInsets.all(30),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text("MIS VEHÍCULOS", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: isDark ? AppColors.amarillo : AppColors.azul)),
-                              IconButton(
-                                icon: Icon(Icons.add_circle, color: isDark ? AppColors.amarillo : AppColors.azul, size: 35),
-                                onPressed: () => mostrarFormulario(),
-                              )
-                            ],
-                          ),
-                          const SizedBox(height: 20),
-                          
-                          if (vehiculos.isEmpty)
-                            Expanded(child: Center(child: Text("No tienes vehículos registrados", style: TextStyle(color: Colors.grey[400]))))
-                          else
-                            Expanded(
-                              child: PageView.builder(
-                                controller: PageController(viewportFraction: 0.9),
-                                itemCount: vehiculos.length,
-                                itemBuilder: (context, index) => _cardGarage(vehiculos[index], isDark),
-                              ),
-                            ),
-                        ],
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(25, 10, 25, 25),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "MIS VEHÍCULOS", 
+                      style: TextStyle(
+                        fontSize: 24, 
+                        fontWeight: FontWeight.w900, 
+                        color: isDark ? AppColors.amarillo : AppColors.azul
+                      )
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        Icons.add_circle, 
+                        color: isDark ? AppColors.amarillo : AppColors.azul, 
+                        size: 35
                       ),
-                    );
-                  },
+                      onPressed: () => mostrarFormulario(),
+                    )
+                  ],
                 ),
-              ),
+                const SizedBox(height: 15),
+                
+                if (vehiculos.isEmpty)
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        "No tienes vehículos registrados", 
+                        style: TextStyle(color: Colors.grey[400], fontSize: 16)
+                      )
+                    )
+                  )
+                else
+                  Expanded(
+                    child: PageView.builder(
+                      controller: PageController(viewportFraction: 0.95),
+                      itemCount: vehiculos.length,
+                      itemBuilder: (context, index) => _cardGarage(vehiculos[index], isDark),
+                    ),
+                  ),
+              ],
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 
   Widget _cardGarage(Map<String, dynamic> v, bool isDark) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 20),
-      padding: const EdgeInsets.all(30),
+      margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 15),
+      padding: const EdgeInsets.all(25),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
-        borderRadius: BorderRadius.circular(35),
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(30),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(isDark ? 0.3 : 0.08), blurRadius: 20, offset: const Offset(0, 10))
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.4 : 0.06), 
+            blurRadius: 15, 
+            offset: const Offset(0, 8)
+          )
         ],
         border: isDark ? Border.all(color: Colors.white.withOpacity(0.05)) : null,
       ),
@@ -293,12 +286,30 @@ class _MiVehiculoState extends State<MiVehiculo> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            v['id_tipo_vehiculo'] == 2 ? Icons.two_wheeler : (v['id_tipo_vehiculo'] == 3 ? Icons.pedal_bike : Icons.directions_car),
-            size: 80, color: isDark ? AppColors.amarillo : AppColors.azul,
+            v['id_tipo_vehiculo'] == 2 
+                ? Icons.two_wheeler 
+                : (v['id_tipo_vehiculo'] == 3 ? Icons.pedal_bike : Icons.directions_car),
+            size: 75, 
+            color: isDark ? AppColors.amarillo : AppColors.azul,
           ),
-          const SizedBox(height: 20),
-          Text(v['placa'], style: TextStyle(fontSize: 35, fontWeight: FontWeight.w900, color: isDark ? Colors.white : Colors.black)),
-          Text("${v['marca']} ${v['modelo']}".toUpperCase(), style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+          const SizedBox(height: 15),
+          Text(
+            v['placa'], 
+            style: TextStyle(
+              fontSize: 32, 
+              fontWeight: FontWeight.w900, 
+              color: isDark ? Colors.white : Colors.black
+            )
+          ),
+          const SizedBox(height: 5),
+          Text(
+            "${v['marca']} ${v['modelo']}".toUpperCase(), 
+            style: const TextStyle(
+              color: Colors.grey, 
+              fontWeight: FontWeight.bold, 
+              letterSpacing: 1.1
+            )
+          ),
           const Spacer(),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -315,7 +326,7 @@ class _MiVehiculoState extends State<MiVehiculo> {
   Widget _btnAccion(IconData icono, String texto, Color color, VoidCallback onTap) {
     return TextButton.icon(
       onPressed: onTap,
-      icon: Icon(icono, color: color, size: 20),
+      icon: Icon(icono, color: color, size: 18),
       label: Text(texto, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
     );
   }

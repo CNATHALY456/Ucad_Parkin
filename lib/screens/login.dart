@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// --- IMPORTACIONES DE DESTINO ACTUALIZADAS ---
+// --- IMPORTACIONES DE DESTINO ---
 import 'package:ucad_parki/screens/vigilante_home.dart';
 import 'package:ucad_parki/screens/usuario_home.dart'; 
 import 'package:ucad_parki/screens/home_admin.dart'; 
+import 'package:ucad_parki/providers/config_provider.dart'; 
 
 import 'package:ucad_parki/widgets/input_ucad.dart';
 import 'package:ucad_parki/widgets/boton_ucad.dart';
@@ -72,12 +74,10 @@ class _LoginPageState extends State<LoginPage> {
 
       final user = res.user;
       if (user != null) {
-        // Obtenemos el rol de los metadatos de usuario de Supabase
         final String? rol = user.userMetadata?['tipo_usuario'];
 
         if (!mounted) return;
 
-        // --- ENRUTADOR SEGÚN ROL ACTUALIZADO Y SEGURO ---
         switch (rol) {
           case 'Vigilante':
             _irAPantalla(const VigilanteHome());
@@ -89,7 +89,6 @@ class _LoginPageState extends State<LoginPage> {
             break;
 
           case 'Admin':
-            // --- CAMBIO: El rol de administrador ahora despliega su vista correspondiente ---
             _irAPantalla(const AdminHome()); 
             break;
 
@@ -135,8 +134,15 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    // --- LECTURA DEL ESTADO DESDE EL CONFIG_PROVIDER ---
+    final config = Provider.of<ConfigProvider>(context);
+    final isDark = config.isDarkMode;
+    final theme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: AppColors.azul,
+      // CORRECCIÓN DEL ERROR: Si está en modo oscuro usa theme.surface (el gris oscuro de tu main.dart), 
+      // si no, mantiene el fondo corporativo AppColors.azul original para que el login no cambie.
+      backgroundColor: isDark ? theme.surface : AppColors.azul,
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 30),
@@ -145,10 +151,17 @@ class _LoginPageState extends State<LoginPage> {
             children: [
               Center(
                 child: Image.asset(
-                  'assets/parky.png', 
+                  // CAMBIO DE IMAGEN DINÁMICA:
+                  isDark ? 'assets/parky2.jpeg' : 'assets/parky.png', 
                   height: 180,
-                  errorBuilder: (context, error, stackTrace) => 
-                    const Icon(Icons.directions_car, size: 100, color: Colors.white),
+                  // Si no usas assets diferentes y prefieres teñir el logo nativo:
+                  // color: isDark ? theme.onSurface : null,
+                  // colorBlendMode: isDark ? BlendMode.srcIn : null,
+                  errorBuilder: (context, error, stackTrace) => Icon(
+                    Icons.directions_car, 
+                    size: 100, 
+                    color: isDark ? theme.primary : Colors.white,
+                  ),
                 ),
               ),
               const SizedBox(height: 30),
@@ -167,10 +180,14 @@ class _LoginPageState extends State<LoginPage> {
                     value: _recordar,
                     activeColor: AppColors.amarillo,
                     checkColor: Colors.black,
-                    side: const BorderSide(color: Colors.white70),
+                    // Borde del checkbox dinámico para que no se pierda en el fondo oscuro
+                    side: BorderSide(color: isDark ? theme.onSurfaceVariant : Colors.white70),
                     onChanged: (val) => setState(() => _recordar = val!),
                   ),
-                  const Text("Recordar cuenta", style: TextStyle(color: Colors.white70)),
+                  Text(
+                    "Recordar cuenta", 
+                    style: TextStyle(color: isDark ? theme.onSurfaceVariant : Colors.white70),
+                  ),
                   const Spacer(),
                   TextButton(
                     onPressed: () => Navigator.push(
@@ -203,7 +220,10 @@ class _LoginPageState extends State<LoginPage> {
                     context, 
                     MaterialPageRoute(builder: (context) => const RegistroPage())
                   ),
-                  child: const Text("¿No tienes cuenta? Regístrate aquí", style: TextStyle(color: Colors.white70)),
+                  child: Text(
+                    "¿No tienes cuenta? Regístrate aquí", 
+                    style: TextStyle(color: isDark ? theme.primary : Colors.white70),
+                  ),
                 ),
               ),
             ],
