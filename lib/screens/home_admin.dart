@@ -24,7 +24,7 @@ class _AdminHomeState extends State<AdminHome> {
     const UsuariosAdmin(),
     const VehiculosAdmin(),
     const TicketsAdmin(),
-    const PerfilPage(),
+    const PerfilPage(), // Tu página de perfil integrada
   ];
 
   @override
@@ -33,73 +33,60 @@ class _AdminHomeState extends State<AdminHome> {
     final isDark = config.isDarkMode;
     final theme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      backgroundColor: isDark ? theme.surface : AppColors.azul,
+    // Evaluamos si el usuario está parado en la pestaña de Perfil (Índice 4)
+    final bool esPerfil = _index == 4;
 
+    return Scaffold(
+      // Si está en perfil, dejamos que la página maneje su fondo azul completo sin cortes
+      backgroundColor: esPerfil 
+          ? (isDark ? theme.surface : AppColors.azul)
+          : (isDark ? theme.surface : AppColors.azul),
+      
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
-
         onTap: (value) {
           setState(() {
             _index = value;
           });
         },
-
         backgroundColor: theme.surface,
         selectedItemColor: AppColors.amarillo,
         unselectedItemColor: Colors.grey,
-
         type: BottomNavigationBarType.fixed,
-
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard),
-            label: "Dashboard",
-          ),
-
+          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: "Dashboard"),
           BottomNavigationBarItem(icon: Icon(Icons.people), label: "Usuarios"),
-
-          BottomNavigationBarItem(
-            icon: Icon(Icons.directions_car),
-            label: "Vehículos",
-          ),
-
-          BottomNavigationBarItem(
-            icon: Icon(Icons.confirmation_num),
-            label: "Tickets",
-          ),
-
+          BottomNavigationBarItem(icon: Icon(Icons.directions_car), label: "Vehículos"),
+          BottomNavigationBarItem(icon: Icon(Icons.confirmation_num), label: "Tickets"),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: "Perfil"),
         ],
       ),
-
       body: SafeArea(
+        // Si es perfil, removemos los márgenes y el logo superior para evitar la duplicación visual
         child: Column(
           children: [
-            const SizedBox(height: 20),
-
-            Center(
-              child: Image.asset(
-                isDark ? 'assets/parky2.jpeg' : 'assets/parky.png',
-                height: 160,
+            if (!esPerfil) ...[
+              const SizedBox(height: 20),
+              Center(
+                child: Image.asset(
+                  isDark ? 'assets/parky2.jpeg' : 'assets/parky.png',
+                  height: 160,
+                ),
               ),
-            ),
-
-            const SizedBox(height: 20),
-
+              const SizedBox(height: 20),
+            ],
+            
             Expanded(
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(20),
-
+                // Si es perfil, eliminamos el padding y el contenedor blanco para que se fusione
+                padding: esPerfil ? EdgeInsets.zero : const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: theme.surface,
-
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(40),
-                  ),
+                  color: esPerfil ? Colors.transparent : theme.surface,
+                  borderRadius: esPerfil 
+                      ? BorderRadius.zero 
+                      : const BorderRadius.vertical(top: Radius.circular(40)),
                 ),
-
                 child: paginas[_index],
               ),
             ),

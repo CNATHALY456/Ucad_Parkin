@@ -4,8 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 // --- IMPORTACIONES DE DESTINO ACTUALIZADAS ---
 import 'package:ucad_parki/screens/vigilante_home.dart';
-import 'package:ucad_parki/screens/usuario_home.dart'; // <--- CAMBIO: Ahora usamos UsuarioHome
-// import 'package:ucad_parki/screens/admin_home.dart'; 
+import 'package:ucad_parki/screens/usuario_home.dart'; 
+import 'package:ucad_parki/screens/home_admin.dart'; 
 
 import 'package:ucad_parki/widgets/input_ucad.dart';
 import 'package:ucad_parki/widgets/boton_ucad.dart';
@@ -72,12 +72,12 @@ class _LoginPageState extends State<LoginPage> {
 
       final user = res.user;
       if (user != null) {
-        // Obtenemos el rol de los metadatos de usuario
+        // Obtenemos el rol de los metadatos de usuario de Supabase
         final String? rol = user.userMetadata?['tipo_usuario'];
 
         if (!mounted) return;
 
-        // --- ENRUTADOR SEGÚN ROL (ACTUALIZADO) ---
+        // --- ENRUTADOR SEGÚN ROL ACTUALIZADO Y SEGURO ---
         switch (rol) {
           case 'Vigilante':
             _irAPantalla(const VigilanteHome());
@@ -85,25 +85,24 @@ class _LoginPageState extends State<LoginPage> {
 
           case 'Estudiante':
           case 'Empleado':
-            // Redirección a la Home con menú de navegación (UsuarioHome)
             _irAPantalla(const UsuarioHome()); 
             break;
 
           case 'Admin':
-            // Si no tienes AdminHome, por defecto enviamos a UsuarioHome
-            _irAPantalla(const UsuarioHome()); 
+            // --- CAMBIO: El rol de administrador ahora despliega su vista correspondiente ---
+            _irAPantalla(const AdminHome()); 
             break;
 
           default:
             await supabase.auth.signOut();
-            mostrarMensaje("Acceso restringido: No tienes un rol asignado.");
+            mostrarMensaje("Acceso restringido: No tienes un rol válido asignado.");
             break;
         }
       }
     } on AuthException catch (e) {
       mostrarMensaje("Error: ${e.message}");
     } catch (e) {
-      mostrarMensaje("Error de conexión");
+      mostrarMensaje("Error de conexión o datos incorrectos");
     } finally {
       if (mounted) setState(() => cargando = false);
     }
@@ -116,8 +115,6 @@ class _LoginPageState extends State<LoginPage> {
       (route) => false,
     );
   }
-
-  // ... (Resto del build se mantiene igual, pero asegúrate de usar los colores de AppColors)
   
   void mostrarMensaje(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -138,8 +135,6 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    // El código del build que ya tienes está excelente, 
-    // solo asegúrate de que el logo parky.png esté en la ruta correcta.
     return Scaffold(
       backgroundColor: AppColors.azul,
       body: Center(
