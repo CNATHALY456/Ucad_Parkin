@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+
 import 'package:ucad_parki/screens/vigilante_home.dart';
 import 'package:ucad_parki/screens/usuario_home.dart';
 import 'package:ucad_parki/screens/home_admin.dart';
@@ -25,130 +26,85 @@ class _LoginPageState extends State<LoginPage> {
   final correoCtrl = TextEditingController();
   final passCtrl = TextEditingController();
   bool cargando = false;
-  bool _recordar = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _cargarCredenciales();
+  void mostrarMensaje(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.redAccent));
   }
 
-  Future<void> _cargarCredenciales() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      correoCtrl.text = prefs.getString('email_usuario') ?? "";
-      _recordar = correoCtrl.text.isNotEmpty;
-    });
+  Future<void> signInWithGoogle() async {
+    try {
+      final GoogleSignIn googleSignIn = GoogleSignIn(serverClientId: 'TU_ID_CLIENTE_WEB_DE_GOOGLE');
+      final googleUser = await googleSignIn.signIn();
+      if (googleUser == null) return;
+      final googleAuth = await googleUser.authentication;
+      await supabase.auth.signInWithIdToken(
+        provider: OAuthProvider.google,
+        idToken: googleAuth.idToken!,
+        accessToken: googleAuth.accessToken,
+      );
+    } catch (e) {
+      mostrarMensaje("Error al iniciar con Google");
+    }
   }
 
   Future<void> iniciarSesion() async {
-    final email = correoCtrl.text.trim();
-    final password = passCtrl.text.trim();
-
-    if (email.isEmpty || password.isEmpty) {
-      mostrarMensaje("Por favor, ingresa tus credenciales");
-      return;
-    }
-
     setState(() => cargando = true);
-
     try {
-      final res = await supabase.auth.signInWithPassword(email: email, password: password);
-      
-      // Guardar email si se seleccionó recordar
-      final prefs = await SharedPreferences.getInstance();
-      _recordar ? await prefs.setString('email_usuario', email) : await prefs.remove('email_usuario');
-
-      final user = res.user;
-      if (user != null) {
-        final String? rol = user.userMetadata?['tipo_usuario'];
-        if (!mounted) return;
-
-        switch (rol) {
-          case 'Vigilante': _irAPantalla(const VigilanteHome()); break;
-          case 'Estudiante': case 'Empleado': _irAPantalla(const UsuarioHome()); break;
-          case 'Admin': _irAPantalla(const AdminHome()); break;
-          default:
-            await supabase.auth.signOut();
-            mostrarMensaje("Acceso restringido: No tienes un rol válido.");
-        }
+      final res = await supabase.auth.signInWithPassword(email: correoCtrl.text.trim(), password: passCtrl.text.trim());
+      if (res.user != null) {
+        final String? rol = res.user!.userMetadata?['tipo_usuario'];
+        if (rol == 'Vigilante') _irAPantalla(const VigilanteHome());
+        else if (rol == 'Estudiante' || rol == 'Empleado') _irAPantalla(const UsuarioHome());
+        else if (rol == 'Admin') _irAPantalla(const AdminHome());
       }
-    } catch (e) {
-      mostrarMensaje("Correo o contraseña incorrectos");
+    } catch (_) {
+      mostrarMensaje("Credenciales incorrectas");
     } finally {
       if (mounted) setState(() => cargando = false);
     }
   }
 
-  void _irAPantalla(Widget vista) {
-    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => vista), (route) => false);
-  }
-
-  void mostrarMensaje(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.redAccent));
-  }
+  void _irAPantalla(Widget vista) => Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => vista), (route) => false);
 
   @override
   Widget build(BuildContext context) {
     final isDark = Provider.of<ConfigProvider>(context).isDarkMode;
-    final theme = Theme.of(context).colorScheme;
-
     return Scaffold(
-      backgroundColor: isDark ? theme.surface : AppColors.azul,
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 30),
-          child: Column(
-            children: [
-              Image.asset(
-                isDark ? 'assets/parky2.jpeg' : 'assets/parky.png',
-                height: 150,
-                errorBuilder: (c, e, s) => Icon(Icons.directions_car, size: 100, color: Colors.white),
-              ),
-              const SizedBox(height: 30),
-              
-              const LabelUcad(texto: "Correo Institucional"),
-              InputUcad(hint: "ejemplo@ucad.edu.sv", controller: correoCtrl),
-              
-              const SizedBox(height: 20),
-              
-              const LabelUcad(texto: "Contraseña"),
-              InputUcad(hint: "Tu contraseña", isPassword: true, controller: passCtrl),
-              
-              Row(
-                children: [
-                  Checkbox(
-                    value: _recordar,
-                    activeColor: AppColors.amarillo,
-                    onChanged: (val) => setState(() => _recordar = val!),
-                  ),
-                  Text("Recordar cuenta", style: TextStyle(color: isDark ? Colors.white70 : Colors.white)),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const RecuperarPassword())),
-                    child: const Text("¿Olvidaste tu clave?", style: TextStyle(color: AppColors.amarillo)),
-                  ),
-                ],
-              ),
-              
-              const SizedBox(height: 20),
-              cargando 
-                ? const CircularProgressIndicator(color: AppColors.amarillo)
-                : BotonUcad(texto: "INICIAR SESIÓN", color: AppColors.amarillo, onPressed: iniciarSesion),
-              
-              const SizedBox(height: 20),
-              
-              TextButton(
-                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const RegistroPage())),
-                child: Text(
-                  "¿No tienes cuenta? Regístrate aquí",
-                  style: TextStyle(
-                    color: isDark ? AppColors.amarillo : Colors.white, 
-                    fontWeight: FontWeight.bold
+      backgroundColor: isDark ? Theme.of(context).colorScheme.surface : AppColors.azul,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 30),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: Image.asset(isDark ? 'assets/parky2.jpeg' : 'assets/parky.png', height: 150)),
+                const SizedBox(height: 30),
+                const LabelUcad(texto: "Correo Institucional"),
+                InputUcad(hint: "ejemplo@ucad.edu.sv", controller: correoCtrl),
+                const SizedBox(height: 20),
+                const LabelUcad(texto: "Contraseña"),
+                InputUcad(hint: "Tu contraseña", isPassword: true, controller: passCtrl),
+                const SizedBox(height: 20),
+                cargando ? const Center(child: CircularProgressIndicator(color: AppColors.amarillo))
+                         : BotonUcad(texto: "INICIAR SESIÓN", color: AppColors.amarillo, onPressed: iniciarSesion),
+                const SizedBox(height: 15),
+                ElevatedButton(
+                  onPressed: signInWithGoogle,
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Image.asset('assets/google.png', height: 24),
+                      const SizedBox(width: 10),
+                      const Text("Acceder con Google", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                    ],
                   ),
                 ),
-              ),
-            ],
+                Center(child: TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const RegistroPage())), child: const Text("¿No tienes cuenta? Regístrate aquí", style: TextStyle(color: Colors.white)))),
+              ],
+            ),
           ),
         ),
       ),
