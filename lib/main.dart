@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:ucad_parki/screens/login.dart';
 import 'package:ucad_parki/screens/actualizar_password.dart';
+import 'package:ucad_parki/screens/usuario_home.dart'; // Asegúrate de tener esta ruta
 import 'package:ucad_parki/providers/config_provider.dart'; 
 import 'package:ucad_parki/utils/app_colors.dart';
 
@@ -41,9 +42,19 @@ class _MyAppState extends State<MyApp> {
 
   void _configurarEscuchaAutenticacion() {
     Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-      if (data.event == AuthChangeEvent.passwordRecovery) {
-        _navigatorKey.currentState?.push(
-          MaterialPageRoute(builder: (context) => const ActualizarPasswordPage()),
+      final event = data.event;
+      
+      if (event == AuthChangeEvent.passwordRecovery) {
+        // Redirigir a la pantalla de actualización de contraseña
+        _navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/actualizar_pass', 
+          (route) => false
+        );
+      } else if (event == AuthChangeEvent.signedOut) {
+        // Si cierra sesión, regresar al login
+        _navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/login', 
+          (route) => false
         );
       }
     });
@@ -51,7 +62,6 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    
     final config = Provider.of<ConfigProvider>(context);
 
     return MaterialApp(
@@ -60,10 +70,15 @@ class _MyAppState extends State<MyApp> {
       title: 'UCAD Parking',
       locale: config.locale,
       
-      // Control de modo de tema
+      // 🚀 RUTAS DEFINIDAS PARA LA NAVEGACIÓN
+      routes: {
+        '/login': (context) => const LoginPage(),
+        '/home': (context) => const UsuarioHome(),
+        '/actualizar_pass': (context) => const ActualizarPasswordPage(),
+      },
+      
       themeMode: config.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       
-      // TEMA CLARO 
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.light,
@@ -74,46 +89,22 @@ class _MyAppState extends State<MyApp> {
           onSurface: AppColors.azul,
         ),
         scaffoldBackgroundColor: Colors.white,
-        appBarTheme: const AppBarTheme(
-          backgroundColor: AppColors.azul,
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-        textTheme: const TextTheme(
-          bodyLarge: TextStyle(color: Colors.black),
-          bodyMedium: TextStyle(color: Colors.black87),
-        ),
       ),
       
-      // TEMA OSCURO CORREGIDO
       darkTheme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
         colorScheme: const ColorScheme.dark(
           primary: AppColors.azul,
           onPrimary: Colors.white,
-          surface: Color(0xFF1E1E1E), // Tarjetas gris oscuro
-          onSurface: Colors.white,    // Texto sobre tarjetas
-          background: Color(0xFF121212), // Fondo general
+          surface: Color(0xFF1E1E1E),
+          onSurface: Colors.white,
+          background: Color(0xFF121212),
         ),
         scaffoldBackgroundColor: const Color(0xFF121212),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF1E1E1E),
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-        // Esto fuerza a que los textos sean visibles
-        textTheme: const TextTheme(
-          bodyLarge: TextStyle(color: Colors.white),
-          bodyMedium: TextStyle(color: Colors.white70),
-          titleLarge: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        // Corrección para inputs en modo oscuro
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: const Color(0xFF2C2C2C),
-          hintStyle: const TextStyle(color: Colors.white54),
-          prefixIconColor: Colors.white70,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none,

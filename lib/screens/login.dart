@@ -2,13 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-// --- IMPORTACIONES DE DESTINO ---
 import 'package:ucad_parki/screens/vigilante_home.dart';
-import 'package:ucad_parki/screens/usuario_home.dart'; 
-import 'package:ucad_parki/screens/home_admin.dart'; 
-import 'package:ucad_parki/providers/config_provider.dart'; 
-
+import 'package:ucad_parki/screens/usuario_home.dart';
+import 'package:ucad_parki/screens/home_admin.dart';
+import 'package:ucad_parki/providers/config_provider.dart';
 import 'package:ucad_parki/widgets/input_ucad.dart';
 import 'package:ucad_parki/widgets/boton_ucad.dart';
 import 'package:ucad_parki/widgets/label_ucad.dart';
@@ -44,15 +41,6 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
-  Future<void> _gestionarRecordatorio() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (_recordar) {
-      await prefs.setString('email_usuario', correoCtrl.text.trim());
-    } else {
-      await prefs.remove('email_usuario');
-    }
-  }
-
   Future<void> iniciarSesion() async {
     final email = correoCtrl.text.trim();
     final password = passCtrl.text.trim();
@@ -65,104 +53,57 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => cargando = true);
 
     try {
-      final AuthResponse res = await supabase.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
-
-      await _gestionarRecordatorio();
+      final res = await supabase.auth.signInWithPassword(email: email, password: password);
+      
+      // Guardar email si se seleccionó recordar
+      final prefs = await SharedPreferences.getInstance();
+      _recordar ? await prefs.setString('email_usuario', email) : await prefs.remove('email_usuario');
 
       final user = res.user;
       if (user != null) {
         final String? rol = user.userMetadata?['tipo_usuario'];
-
         if (!mounted) return;
 
         switch (rol) {
-          case 'Vigilante':
-            _irAPantalla(const VigilanteHome());
-            break;
-
-          case 'Estudiante':
-          case 'Empleado':
-            _irAPantalla(const UsuarioHome()); 
-            break;
-
-          case 'Admin':
-            _irAPantalla(const AdminHome()); 
-            break;
-
+          case 'Vigilante': _irAPantalla(const VigilanteHome()); break;
+          case 'Estudiante': case 'Empleado': _irAPantalla(const UsuarioHome()); break;
+          case 'Admin': _irAPantalla(const AdminHome()); break;
           default:
             await supabase.auth.signOut();
-            mostrarMensaje("Acceso restringido: No tienes un rol válido asignado.");
-            break;
+            mostrarMensaje("Acceso restringido: No tienes un rol válido.");
         }
       }
-    } on AuthException catch (e) {
-      mostrarMensaje("Error: ${e.message}");
     } catch (e) {
-      mostrarMensaje("Error de conexión o datos incorrectos");
+      mostrarMensaje("Correo o contraseña incorrectos");
     } finally {
       if (mounted) setState(() => cargando = false);
     }
   }
 
   void _irAPantalla(Widget vista) {
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (context) => vista),
-      (route) => false,
-    );
-  }
-  
-  void mostrarMensaje(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg), 
-        backgroundColor: Colors.redAccent.shade700,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => vista), (route) => false);
   }
 
-  @override
-  void dispose() {
-    correoCtrl.dispose();
-    passCtrl.dispose();
-    super.dispose();
+  void mostrarMensaje(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.redAccent));
   }
 
   @override
   Widget build(BuildContext context) {
-    // --- LECTURA DEL ESTADO DESDE EL CONFIG_PROVIDER ---
-    final config = Provider.of<ConfigProvider>(context);
-    final isDark = config.isDarkMode;
+    final isDark = Provider.of<ConfigProvider>(context).isDarkMode;
     final theme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      // CORRECCIÓN DEL ERROR: Si está en modo oscuro usa theme.surface (el gris oscuro de tu main.dart), 
-      // si no, mantiene el fondo corporativo AppColors.azul original para que el login no cambie.
       backgroundColor: isDark ? theme.surface : AppColors.azul,
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 30),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                child: Image.asset(
-                  // CAMBIO DE IMAGEN DINÁMICA:
-                  isDark ? 'assets/parky2.jpeg' : 'assets/parky.png', 
-                  height: 180,
-                  // Si no usas assets diferentes y prefieres teñir el logo nativo:
-                  // color: isDark ? theme.onSurface : null,
-                  // colorBlendMode: isDark ? BlendMode.srcIn : null,
-                  errorBuilder: (context, error, stackTrace) => Icon(
-                    Icons.directions_car, 
-                    size: 100, 
-                    color: isDark ? theme.primary : Colors.white,
-                  ),
-                ),
+              Image.asset(
+                isDark ? 'assets/parky2.jpeg' : 'assets/parky.png',
+                height: 150,
+                errorBuilder: (c, e, s) => Icon(Icons.directions_car, size: 100, color: Colors.white),
               ),
               const SizedBox(height: 30),
               
@@ -179,50 +120,31 @@ class _LoginPageState extends State<LoginPage> {
                   Checkbox(
                     value: _recordar,
                     activeColor: AppColors.amarillo,
-                    checkColor: Colors.black,
-                    // Borde del checkbox dinámico para que no se pierda en el fondo oscuro
-                    side: BorderSide(color: isDark ? theme.onSurfaceVariant : Colors.white70),
                     onChanged: (val) => setState(() => _recordar = val!),
                   ),
-                  Text(
-                    "Recordar cuenta", 
-                    style: TextStyle(color: isDark ? theme.onSurfaceVariant : Colors.white70),
-                  ),
+                  Text("Recordar cuenta", style: TextStyle(color: isDark ? Colors.white70 : Colors.white)),
                   const Spacer(),
                   TextButton(
-                    onPressed: () => Navigator.push(
-                      context, 
-                      MaterialPageRoute(builder: (context) => const RecuperarPassword())
-                    ),
-                    child: const Text(
-                      "¿Olvidaste tu clave?", 
-                      style: TextStyle(color: AppColors.amarillo, fontWeight: FontWeight.bold)
-                    ),
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const RecuperarPassword())),
+                    child: const Text("¿Olvidaste tu clave?", style: TextStyle(color: AppColors.amarillo)),
                   ),
                 ],
               ),
-
+              
+              const SizedBox(height: 20),
+              cargando 
+                ? const CircularProgressIndicator(color: AppColors.amarillo)
+                : BotonUcad(texto: "INICIAR SESIÓN", color: AppColors.amarillo, onPressed: iniciarSesion),
+              
               const SizedBox(height: 20),
               
-              cargando
-                  ? const Center(child: CircularProgressIndicator(color: AppColors.amarillo))
-                  : BotonUcad(
-                      texto: "INICIAR SESIÓN",
-                      color: AppColors.amarillo,
-                      onPressed: iniciarSesion,
-                    ),
-              
-              const SizedBox(height: 10),
-              
-              Center(
-                child: TextButton(
-                  onPressed: () => Navigator.push(
-                    context, 
-                    MaterialPageRoute(builder: (context) => const RegistroPage())
-                  ),
-                  child: Text(
-                    "¿No tienes cuenta? Regístrate aquí", 
-                    style: TextStyle(color: isDark ? theme.primary : Colors.white70),
+              TextButton(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const RegistroPage())),
+                child: Text(
+                  "¿No tienes cuenta? Regístrate aquí",
+                  style: TextStyle(
+                    color: isDark ? AppColors.amarillo : Colors.white, 
+                    fontWeight: FontWeight.bold
                   ),
                 ),
               ),

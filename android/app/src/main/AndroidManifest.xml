@@ -43,6 +43,11 @@
     <queries>
         <intent>
             <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" android:host="wa.me" />
+        </intent>
+
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
         <intent>

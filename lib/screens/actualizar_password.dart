@@ -36,29 +36,35 @@ class _ActualizarPasswordPageState extends State<ActualizarPasswordPage> {
     setState(() => cargando = true);
     
     try {
+      // 1. Intentar actualizar la contraseña
       await supabase.auth.updateUser(
         UserAttributes(password: passCtrl.text.trim()),
       );
+      
+      // 2. Cerrar sesión explícitamente para forzar re-login con la nueva clave
+      await supabase.auth.signOut();
       
       if (!mounted) return;
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(isSpanish 
-            ? "Contraseña actualizada correctamente ✅" 
-            : "Password updated successfully ✅"), 
+            ? "Contraseña actualizada. Inicia sesión de nuevo." 
+            : "Password updated. Please log in again."), 
           backgroundColor: Colors.green
         )
       );
 
-      // Limpia el historial para que no puedan volver atrás a la recuperación
+      // 3. Redirigir al login y limpiar todo el stack de navegación
       Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
       
     } on AuthException catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.message), backgroundColor: Colors.red)
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(isSpanish ? "Error inesperado" : "Unexpected error"), 
@@ -83,7 +89,6 @@ class _ActualizarPasswordPageState extends State<ActualizarPasswordPage> {
     final isSpanish = config.locale.languageCode == 'es';
 
     return Scaffold(
-      // Adaptación de fondo según el tema
       backgroundColor: isDark ? const Color(0xFF1A1A1A) : AppColors.azul,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -124,8 +129,6 @@ class _ActualizarPasswordPageState extends State<ActualizarPasswordPage> {
                 hint: isSpanish ? "Escribe tu nueva clave" : "Type your new password", 
                 controller: passCtrl, 
                 isPassword: true,
-                // Si tu InputUcad no maneja el Dark Mode internamente, 
-                // asegúrate de que el estilo del texto sea blanco aquí.
               ),
 
               const SizedBox(height: 30),
